@@ -29,11 +29,11 @@ func (u *User) readLoop() {
 		if err != nil {
 			//정상적으로 종료되었는지 체크
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("Read error for client %s: %v", u.name, err)
+				log.Printf("Read error for client %s: %v", u.ID, err)
 			}
 			break
 		}
-		log.Printf("Received message from %s: %s", u.name, string(msg))
+		log.Printf("Received message from %s: %s", u.ID, string(msg))
 		// 메시지 처리 로직 추가
 		u.game.handleMessage(u, msg)
 	}
