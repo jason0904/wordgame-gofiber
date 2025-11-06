@@ -3,10 +3,8 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"math/rand"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 
 	"github.com/gofiber/contrib/websocket"
@@ -15,57 +13,74 @@ import (
 
 type Game struct {
 	room          *Room
+	RoomName      string       `json:"roomName"`
+	RoomId        int          `json:"roomId"`
+	manager       *RoomManager 
 	lastWord      string
 	usedWords     map[string]bool
 	players       []*User
 	currentUserID string
 	gameover      bool
+	started       bool
 	message       string
 	mu            sync.Mutex
 }
 
 type GameMessage struct {
 	Type    string `json:"type"`
-	Payload string `json:"data"`
+	Payload any    `json:"payload"` // 변경: 클라이언트가 보내는 키에 맞춤
 }
 
-// 전역 난수 생성기: rand.Seed 대신 rand.New(rand.NewSource(...)) 사용
-var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
-func (g *Game) NewGame(room *Room) *Game {
+func NewGame(roomname string, roomId int, manager *RoomManager) *Game {
+	//게임 생성시 룸도 같이 생성되게.
+	room := NewRoom()
+	go room.run()
 
 	return &Game{
 		room:      room,
+		RoomName:  roomname,
+		RoomId:    roomId,
+		manager:   manager,
 		usedWords: make(map[string]bool),
 		players:   make([]*User, 0),
 		message:   "플레이어를 기다리는 중...",
+		started:   false, //로비상태로 유지.
 	}
 }
 
 func (g *Game) AddClient(conn *websocket.Conn) {
-	user := &User{
-		conn: conn,
-		ID: conn.RemoteAddr().String(),
-		game: g,
-	}
+	user := NewUser(conn, conn.RemoteAddr().String(), "user") //나중에 이름 넣는 부분 추가.
+	user.game = g
 
+	// Room에 등록
 	g.room.register <- user
 	g.addUser(user)
 
+	// 새로 접속한 클라이언트에만 개인 welcome 메시지(자기 ID) 전송
+	welcome := map[string]string{
+		"type":   "welcome",
+		"yourId": user.ID,
+	}
+	if wb, err := json.Marshal(welcome); err == nil {
+		if err := user.conn.WriteMessage(websocket.TextMessage, wb); err != nil {
+			log.Printf("failed to send welcome to %s: %v", user.ID, err)
+		}
+	} else {
+		log.Println("marshal welcome error:", err)
+	}
+
+	// 플레이어가 처음 들어오면 게임 초기화
 	if len(g.players) == 1 {
 		g.reset()
 	}
 
+	// 현재 상태 전파
 	g.broadcastGameState()
 
-	//클라이언트의 메시지 수신 루프 시작
+	// 클라이언트의 메시지 수신 루프 시작 (blocking)
 	user.readLoop()
 
-	//클라이언트 연결 종료 처리
+	// readLoop 종료 시 연결 정리
 	g.room.unregister <- user
 	g.removeUser(user)
 	g.broadcastGameState()
@@ -80,8 +95,19 @@ func (g *Game) handleMessage(user *User, msg []byte) {
 	}
 
 	switch gameMessage.Type {
-	case "word":
-		g.handlePlay(user, gameMessage.Payload)
+	case "start_game":
+		if !g.started {
+			g.startGame()
+		}
+	case "submit_word":
+		if g.started {
+			word, ok := gameMessage.Payload.(string)
+			if !ok {
+				log.Println("Invalid payload for submit_word:", gameMessage.Payload)
+				return
+			}
+			g.handlePlay(user, word)
+		}
 	case "reset_game":
 		g.reset()
 	default:
@@ -133,17 +159,25 @@ func (g *Game) reset() {
 	g.lastWord = ""
 	g.usedWords = make(map[string]bool)
 	g.gameover = false
+	g.started = false
+	g.currentUserID = ""
+	g.message = "새 게임을 시작할 수 있습니다. 플레이어를 기다립니다."
+	log.Printf("Game reset in room %d", g.RoomId)
+}
 
-	if len(g.players) > 0 {
-		// 시작 플레이어를 무작위로 선택
-		idx := rnd.Intn(len(g.players))
-		g.currentUserID = g.players[idx].ID
-		g.message = "게임 시작! " + g.currentUserID + "님의 차례입니다."
-	} else {
-		g.currentUserID = ""
-		g.message = "플레이어를 기다리는 중..."
+func (g *Game) startGame() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.started || len(g.players) == 0 {
+		return
 	}
-	log.Println("game reset")
+
+	g.started = true
+	g.gameover = false
+	g.currentUserID = g.players[0].ID
+	g.message = "게임 시작! " + g.currentUserID + "님부터 시작하세요."
+	log.Printf("Game started in room %d", g.RoomId)
 }
 
 func (g *Game) broadcastGameState() {
@@ -160,6 +194,7 @@ func (g *Game) broadcastGameState() {
 		"players":             players,
 		"currentTurnPlayerId": g.currentUserID,
 		"isGameOver":          g.gameover,
+		"isStarted":           g.started,
 		"message":             g.message,
 	}
 
@@ -189,7 +224,9 @@ func (g *Game) addUser(user *User) {
 
 func (g *Game) removeUser(user *User) {
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	// 삭제 플래그
+	shouldDelete := false
+
 	for i, p := range g.players {
 		if p.ID == user.ID {
 			g.players = append(g.players[:i], g.players[i+1:]...)
@@ -200,16 +237,25 @@ func (g *Game) removeUser(user *User) {
 				g.currentUserID = g.players[nextPlayerIndex].ID
 				g.message = "플레이어가 나갔습니다. 다음 차례: " + g.currentUserID
 			} else if len(g.players) == 0 {
-				//reset 호출하는 대신 게임 상태 초기화
+				// 플레이어가 0명이면 게임 초기화 및 삭제 플래그 설정
 				g.currentUserID = ""
 				g.message = "모든 플레이어가 나갔습니다. 새로운 플레이어를 기다립니다."
 				g.lastWord = ""
 				g.usedWords = make(map[string]bool)
 				g.gameover = false
+				shouldDelete = true
+			}
+			g.mu.Unlock()
+
+			// 데드락 가능성 때문에 언락후 삭제.
+			if shouldDelete && g.manager != nil {
+				log.Printf("Deleting empty room %d", g.RoomId)
+				g.manager.DeleteRoom(g.RoomId)
 			}
 			return
 		}
 	}
+	g.mu.Unlock()
 }
 
 func (g *Game) setNextPlayerTurn(currentUserID string) {
@@ -227,5 +273,3 @@ func (g *Game) setNextPlayerTurn(currentUserID string) {
 		}
 	}
 }
-
-
