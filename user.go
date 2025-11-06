@@ -22,7 +22,8 @@ func NewUser(conn *websocket.Conn, ID string) *User {
 func (u *User) readLoop() {
 	defer func() {
 		//정상 종료 로직 추가.
-	}
+		log.Printf("Read loop for client %s ended.", u.ID)
+	}()
 
 	for {
 		_, msg, err := u.conn.ReadMessage()
