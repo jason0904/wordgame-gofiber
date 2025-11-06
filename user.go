@@ -8,14 +8,14 @@ import (
 
 type User struct {
 	conn *websocket.Conn
-	name string
+	ID   string
 	game *Game //자신이 속한 게임 방에 관련된 참조
 }
 
-func NewUser(conn *websocket.Conn, name string) *User {
+func NewUser(conn *websocket.Conn, ID string) *User {
 	return &User{
 		conn: conn,
-		name: name,
+		ID:   ID,
 	}
 }
 
