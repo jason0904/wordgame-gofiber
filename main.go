@@ -24,7 +24,7 @@ func main() {
 
 	app.Post("/api/rooms", func(c *fiber.Ctx) error {
 		game := roomManager.MakeRoom("New Room") //나중에 방 이름 설정 할 수 있도록 세팅 변경.
-		return c.JSON(fiber.Map{"id": game.RoomId, "roomName": game.RoomName})
+		return c.JSON(fiber.Map{"id": game.RoomId, "room_name": game.RoomName})
 	})
 
 	//websocket 핸들러

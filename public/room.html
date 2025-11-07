@@ -57,19 +57,29 @@
     const startGameBtn = document.getElementById('start-game-btn');
     const playersEl = document.getElementById('players');
     
+    let myId = ''; // 자신의 ID를 저장할 변수
+
     // --- WebSocket 설정 ---
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('id');
-    const roomName = urlParams.get('roomName');
+    const room_name = urlParams.get('room_name') || '이름 없는 방';
     const name = urlParams.get('name') || 'user';
-    roomTitle.textContent = `방 #${roomId} - ${roomName}`;
+    roomTitle.textContent = `방 #${roomId} - ${room_name}`;
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/${roomId}`);
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/${roomId}?name=${name}`);
 
     ws.onmessage = (event) => {
-        const state = JSON.parse(event.data);
-        updateUI(state);
+        const data = JSON.parse(event.data);
+        
+        // 서버로부터 오는 메시지 타입에 따라 처리
+        if (data.type === 'welcome') {
+            myId = data.yourId; // 서버에서 보내준 자신의 ID 저장
+            console.log('My ID is:', myId);
+        } else {
+            // 게임 상태 업데이트
+            updateUI(data);
+        }
     };
     
     startGameBtn.addEventListener('click', () => {
@@ -98,26 +108,35 @@
 
         const playerLists = [lobbyPlayers, playersEl];
         playerLists.forEach(list => list.innerHTML = '');
-        state.players.forEach(playerId => {
-            const li = document.createElement('li');
-            li.textContent = playerId;
-            if (playerId === state.currentTurnPlayerId && state.isStarted) {
-                li.className = 'current-turn';
-                li.textContent += ' (내 차례)';
-            }
-            playerLists.forEach(list => list.appendChild(li.cloneNode(true)));
-        });
+
+        if (state.players) {
+            state.players.forEach(playerId => {
+                const li = document.createElement('li');
+                li.textContent = playerId;
+                if (playerId === state.currentTurnPlayerId && state.isStarted) {
+                    li.className = 'current-turn';
+                    if (playerId === myId) {
+                        li.textContent += ' (내 차례)';
+                    }
+                }
+                playerLists.forEach(list => list.appendChild(li.cloneNode(true)));
+            });
+        }
 
         if (state.isStarted) {
             document.getElementById('last-word').textContent = state.lastWord || '-';
             document.getElementById('message').textContent = state.message || '';
             
-            const isMyTurn = true; // 일단 테스트용. 실제로는 state.currentTurnPlayerId === myId 로 구현해야 함
+            const isMyTurn = state.currentTurnPlayerId === myId;
             const input = document.getElementById('word-input');
             const submitBtn = document.getElementById('submit-btn');
 
             input.disabled = state.isGameOver || !isMyTurn;
             submitBtn.disabled = state.isGameOver || !isMyTurn;
+
+            if (!state.isGameOver && isMyTurn) {
+                input.focus();
+            }
         }
     }
 </script>

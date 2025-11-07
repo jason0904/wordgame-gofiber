@@ -31,7 +31,7 @@
                 const li = document.createElement('li');
                 li.className = 'room-item';
                 li.innerHTML = `
-                    <a href="/room.html?id=${room.id}">방 #${room.id} - ${room.name}</a>
+                    <a href="/room.html?id=${room.id}&room_name=${encodeURIComponent(room.room_name)}">방 #${room.id} - ${room.room_name}</a>
                     <span>${room.is_started ? '게임 중' : '대기 중'} (${room.player_count}명)</span>
                 `;
                 roomListEl.appendChild(li);
@@ -42,7 +42,7 @@
     createRoomBtn.addEventListener('click', async () => {
         const response = await fetch('/api/rooms', { method: 'POST' });
         const newRoom = await response.json();
-        window.location.href = `/room.html?id=${newRoom.id}`;
+        window.location.href = `/room.html?id=${newRoom.id}&room_name=${encodeURIComponent(newRoom.room_name)}`;
     });
 
     // 1초마다 룸 목록을 새로고침
