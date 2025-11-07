@@ -1,15 +1,16 @@
 package main
 
 import (
-  "context"
-  "gorm.io/driver/sqlite"
-  "gorm.io/gorm"
+	"context"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 type Word struct {
-	id int
-	word string
-	part string
+	Id   int    `gorm:"column:id"`
+	Word string `gorm:"column:word"`
+	Part string `gorm:"column:part"`
 }
 
 func IsWordInDB(word string) bool {
@@ -17,7 +18,7 @@ func IsWordInDB(word string) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	var result Word
 	err = db.WithContext(context.Background()).Where("word = ?", word).First(&result).Error
 
