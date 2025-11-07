@@ -13,8 +13,8 @@ import (
 
 type Game struct {
 	room          *Room
-	RoomName      string       `json:"roomName"`
-	RoomId        int          `json:"roomId"`
+	RoomName      string       
+	RoomId        int
 	manager       *RoomManager
 	hostUserId    string
 	lastWord      string
@@ -104,7 +104,9 @@ func (g *Game) handleMessage(user *User, msg []byte) {
 			g.handlePlay(user, word)
 		}
 	case "reset_game":
+		g.mu.Lock()
 		g.reset()
+		g.mu.Unlock()
 	default:
 		log.Println("Unknown message type:", gameMessage.Type)
 	}
@@ -148,8 +150,6 @@ func (g *Game) handlePlay(user *User, word string) {
 }
 
 func (g *Game) reset() {
-	g.mu.Lock()
-	defer g.mu.Unlock()
 
 	g.lastWord = ""
 	g.usedWords = make(map[string]bool)
@@ -218,21 +218,20 @@ func (g *Game) addUser(user *User) {
 
 	if len(g.players) == 1 {
 		g.hostUserId = user.ID
-		log.Printf("Player %s is now the host.", user.Name)
+		log.Printf("Player %s is now the host(ID : %s).", user.Name, user.ID)
 		g.reset()
 	}
-	log.Printf("Player %s Enter the Game", user.Name)
+	log.Printf("Player %s Enter the Game(ID : %s)", user.Name, user.ID)
 }
 
 func (g *Game) removeUser(user *User) {
 	g.mu.Lock()
-	// 삭제 플래그
 	shouldDelete := false
 
 	for i, p := range g.players {
 		if p.ID == user.ID {
 			g.players = append(g.players[:i], g.players[i+1:]...)
-			log.Printf("Player %s removed from the game.", user.ID)
+			log.Printf("Player %s removed from the game(ID : %s).", user.Name, user.ID)
 
 			if g.hostUserId == user.ID {
 				//유저 아무에게 호스트 권한 이전
