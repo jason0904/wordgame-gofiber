@@ -15,7 +15,8 @@ type Game struct {
 	room          *Room
 	RoomName      string       `json:"roomName"`
 	RoomId        int          `json:"roomId"`
-	manager       *RoomManager 
+	manager       *RoomManager
+	hostUserId    string
 	lastWord      string
 	usedWords     map[string]bool
 	players       []*User
@@ -52,7 +53,6 @@ func (g *Game) AddClient(conn *websocket.Conn) {
 	user := NewUser(conn, conn.RemoteAddr().String(), "user") //나중에 이름 넣는 부분 추가.
 	user.game = g
 
-	// Room에 등록
 	g.room.register <- user
 	g.addUser(user)
 
@@ -67,11 +67,6 @@ func (g *Game) AddClient(conn *websocket.Conn) {
 		}
 	} else {
 		log.Println("marshal welcome error:", err)
-	}
-
-	// 플레이어가 처음 들어오면 게임 초기화
-	if len(g.players) == 1 {
-		g.reset()
 	}
 
 	// 현재 상태 전파
@@ -96,7 +91,7 @@ func (g *Game) handleMessage(user *User, msg []byte) {
 
 	switch gameMessage.Type {
 	case "start_game":
-		if !g.started {
+		if !g.started && user.ID == g.hostUserId {
 			g.startGame()
 		}
 	case "submit_word":
@@ -193,6 +188,7 @@ func (g *Game) broadcastGameState() {
 		"lastWord":            g.lastWord,
 		"players":             players,
 		"currentTurnPlayerId": g.currentUserID,
+		"hostUserId":          g.hostUserId,
 		"isGameOver":          g.gameover,
 		"isStarted":           g.started,
 		"message":             g.message,
@@ -219,6 +215,12 @@ func (g *Game) addUser(user *User) {
 		}
 	}
 	g.players = append(g.players, user)
+
+	if len(g.players) == 1 {
+		g.hostUserId = user.ID
+		log.Printf("Player %s is now the host.", user.ID)
+		g.reset()
+	}
 	log.Printf("Player %s Enter the Game", user.ID)
 }
 
@@ -231,6 +233,17 @@ func (g *Game) removeUser(user *User) {
 		if p.ID == user.ID {
 			g.players = append(g.players[:i], g.players[i+1:]...)
 			log.Printf("Player %s removed from the game.", user.ID)
+
+			if g.hostUserId == user.ID {
+				//유저 아무에게 호스트 권한 이전
+				if len(g.players) > 0 {
+					randomUser := g.players[makeRandomNumber(0, len(g.players))].ID
+					g.hostUserId = randomUser
+					log.Printf("Host user changed to %s", randomUser)
+				} else {
+					g.hostUserId = ""
+				}
+			}
 
 			if g.currentUserID == user.ID && len(g.players) > 0 && !g.gameover {
 				nextPlayerIndex := i % len(g.players)
