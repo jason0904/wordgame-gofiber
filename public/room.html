@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>끝말잇기 게임</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f2f5; margin: 0; }
+        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: center; width: 90%; max-width: 500px; }
+        
+        /* 화면 전환을 위한 스타일 */
+        .hidden { display: none; }
+
+        /* 로비 스타일 */
+        #lobby-view h2 { margin-top: 0; }
+        #lobby-players { list-style: none; padding: 0; }
+        #start-game-btn { background-color: #28a745; color: white; font-size: 1.2rem; padding: 15px 30px; }
+
+        /* 게임 스타일 */
+        #last-word { font-size: 2rem; margin: 1rem 0; color: #333; font-weight: bold; }
+        #message { margin-bottom: 1rem; color: #555; height: 20px; font-weight: bold; }
+        #player-list ul { list-style: none; padding: 0; margin: 0; }
+        #player-list li.current-turn { font-weight: bold; color: #007bff; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div id="lobby-view">
+        <h2 id="room-title"></h2>
+        <h3>참가자 목록</h3>
+        <ul id="lobby-players"></ul>
+        <br>
+        <button id="start-game-btn">게임 시작</button>
+    </div>
+
+    <div id="game-view" class="hidden">
+        <h1>끝말잇기</h1>
+        <div id="message"></div>
+        <div id="last-word">-</div>
+        <form id="game-form">
+            <input type="text" id="word-input" autocomplete="off" autofocus>
+            <button type="submit" id="submit-btn">입력</button>
+        </form>
+        <br>
+        <button id="reset-btn">로비로 돌아가기</button>
+        <div id="player-list">
+            <h3>참가자</h3>
+            <ul id="players"></ul>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    const lobbyView = document.getElementById('lobby-view');
+    const gameView = document.getElementById('game-view');
+    const roomTitle = document.getElementById('room-title');
+    const lobbyPlayers = document.getElementById('lobby-players');
+    const startGameBtn = document.getElementById('start-game-btn');
+    const playersEl = document.getElementById('players');
+    
+    // --- WebSocket 설정 ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('id');
+    const roomName = urlParams.get('roomName');
+    const name = urlParams.get('name') || 'user';
+    roomTitle.textContent = `방 #${roomId} - ${roomName}`;
+
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/${roomId}`);
+
+    ws.onmessage = (event) => {
+        const state = JSON.parse(event.data);
+        updateUI(state);
+    };
+    
+    startGameBtn.addEventListener('click', () => {
+        ws.send(JSON.stringify({ type: 'start_game' }));
+    });
+    
+    document.getElementById('game-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('word-input');
+        ws.send(JSON.stringify({ type: 'submit_word', payload: input.value }));
+        input.value = '';
+    });
+    
+    document.getElementById('reset-btn').addEventListener('click', () => {
+        ws.send(JSON.stringify({ type: 'reset_game' }));
+    });
+
+    function updateUI(state) {
+        if (state.isStarted) {
+            lobbyView.classList.add('hidden');
+            gameView.classList.remove('hidden');
+        } else {
+            lobbyView.classList.remove('hidden');
+            gameView.classList.add('hidden');
+        }
+
+        const playerLists = [lobbyPlayers, playersEl];
+        playerLists.forEach(list => list.innerHTML = '');
+        state.players.forEach(playerId => {
+            const li = document.createElement('li');
+            li.textContent = playerId;
+            if (playerId === state.currentTurnPlayerId && state.isStarted) {
+                li.className = 'current-turn';
+                li.textContent += ' (내 차례)';
+            }
+            playerLists.forEach(list => list.appendChild(li.cloneNode(true)));
+        });
+
+        if (state.isStarted) {
+            document.getElementById('last-word').textContent = state.lastWord || '-';
+            document.getElementById('message').textContent = state.message || '';
+            
+            const isMyTurn = true; // 일단 테스트용. 실제로는 state.currentTurnPlayerId === myId 로 구현해야 함
+            const input = document.getElementById('word-input');
+            const submitBtn = document.getElementById('submit-btn');
+
+            input.disabled = state.isGameOver || !isMyTurn;
+            submitBtn.disabled = state.isGameOver || !isMyTurn;
+        }
+    }
+</script>
+</body>
+</html>
