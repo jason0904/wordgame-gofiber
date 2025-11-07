@@ -181,7 +181,7 @@ func (g *Game) broadcastGameState() {
 
 	players := make([]string, len(g.players))
 	for i, player := range g.players {
-		players[i] = player.ID
+		players[i] = player.Name
 	}
 
 	stateToSend := fiber.Map{
