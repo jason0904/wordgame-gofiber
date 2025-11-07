@@ -36,7 +36,7 @@ func NewGame(roomname string, roomId int, manager *RoomManager) *Game {
 	//게임 생성시 룸도 같이 생성되게.
 	room := NewRoom()
 	go room.run()
-
+	
 	return &Game{
 		room:      room,
 		RoomName:  roomname,
@@ -49,8 +49,8 @@ func NewGame(roomname string, roomId int, manager *RoomManager) *Game {
 	}
 }
 
-func (g *Game) AddClient(conn *websocket.Conn) {
-	user := NewUser(conn, conn.RemoteAddr().String(), "user") //나중에 이름 넣는 부분 추가.
+func (g *Game) AddClient(conn *websocket.Conn, name string) {
+	user := NewUser(conn, conn.RemoteAddr().String(), name)
 	user.game = g
 
 	g.room.register <- user
@@ -218,10 +218,10 @@ func (g *Game) addUser(user *User) {
 
 	if len(g.players) == 1 {
 		g.hostUserId = user.ID
-		log.Printf("Player %s is now the host.", user.ID)
+		log.Printf("Player %s is now the host.", user.Name)
 		g.reset()
 	}
-	log.Printf("Player %s Enter the Game", user.ID)
+	log.Printf("Player %s Enter the Game", user.Name)
 }
 
 func (g *Game) removeUser(user *User) {

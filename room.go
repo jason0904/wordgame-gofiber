@@ -31,12 +31,12 @@ func (r *Room) run() {
 			r.mu.Lock()
 			r.clients[user] = true
 			r.mu.Unlock()
-			log.Printf("User %s joined the room.", user.ID)
+			log.Printf("User %s joined the room.", user.Name)
 		case user := <-r.unregister:
 			r.mu.Lock()
 			if _, ok := r.clients[user]; ok {
 				delete(r.clients, user)
-				log.Printf("User %s left the room.", user.ID)
+				log.Printf("User %s left the room.", user.Name)
 			}
 			r.mu.Unlock()
 		case message := <-r.broadcast:
@@ -44,7 +44,7 @@ func (r *Room) run() {
 			for client := range r.clients {
 				err := client.conn.WriteMessage(websocket.TextMessage, message)
 				if err != nil {
-					log.Printf("Error broadcasting to %s: %v", client.ID, err)
+					log.Printf("Error broadcasting to %s: %v", client.Name, err)
 					client.conn.Close()
 					delete(r.clients, client)
 				}
