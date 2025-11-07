@@ -44,9 +44,9 @@ func (rm *RoomManager) GetRooms() []map[string]any {
 	for id, game := range rm.rooms {
 		list = append(list, map[string]any{
 			"id":           id,
-			"room_name":     game.RoomName,
-			"player_count": len(game.players),
-			"is_started":   game.started,
+			"roomName":     game.RoomName,
+			"playerCount":  len(game.players),
+			"isStarted":    game.started,
 		})
 	}
 	return list
