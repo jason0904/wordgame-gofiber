@@ -30,24 +30,67 @@
             rooms.forEach(room => {
                 const li = document.createElement('li');
                 li.className = 'room-item';
+                // 변경: href="#"로 바꾸고, 방 정보를 data 속성에 저장합니다.
                 li.innerHTML = `
-                    <a href="/room.html?id=${room.id}&room_name=${encodeURIComponent(room.room_name)}">방 #${room.id} - ${room.room_name}</a>
-                    <span>${room.is_started ? '게임 중' : '대기 중'} (${room.player_count}명)</span>
+                    <a href="#" data-room-id="${room.id}" data-room-name="${room.roomName}">방 #${room.id} - ${room.roomName}</a>
+                    <span>${room.isStarted ? '게임 중' : '대기 중'} (${room.playerCount}명)</span>
                 `;
                 roomListEl.appendChild(li);
             });
         }
     }
 
-    createRoomBtn.addEventListener('click', async () => {
-        const response = await fetch('/api/rooms', { method: 'POST' });
-        const newRoom = await response.json();
-        window.location.href = `/room.html?id=${newRoom.id}&room_name=${encodeURIComponent(newRoom.room_name)}`;
+    roomListEl.addEventListener('click', (e) => {
+        const link = e.target.closest('a');
+        if (link) {
+            e.preventDefault(); // 링크의 페이지 이동 블록.
+
+            const roomId = link.dataset.roomId;
+            const roomName = link.dataset.roomName;
+
+            const userName = prompt("게임에서 사용할 이름을 입력하세요:", "익명");
+
+            // 사용자가 취소를 누르지 않은 경우에만 페이지를 이동.
+            if (userName !== null) {
+                window.location.href = `/room.html?id=${roomId}&roomName=${encodeURIComponent(roomName)}&name=${encodeURIComponent(userName || '익명')}`;
+            }
+        }
     });
 
-    // 1초마다 룸 목록을 새로고침
+    createRoomBtn.addEventListener('click', () => {
+        // 방 생성 페이지로 이동
+        window.location.href = '/create-room.html';
+    });
+
+    let pollingIntervalId = null; 
+
+    function startPolling() {
+        // 이미 폴링이 실행 중이면 중복 실행 방지
+        if (pollingIntervalId) {
+            clearInterval(pollingIntervalId);
+        }
+        pollingIntervalId = setInterval(fetchRooms, 500);
+    }
+
+    function stopPolling() {
+        clearInterval(pollingIntervalId);
+        pollingIntervalId = null;
+    }
+
+    // 페이지의 가시성 상태 변경을 감지하는 이벤트 리스너
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            console.log("탭이 비활성화되어 폴링을 중지합니다.");
+            stopPolling();
+        } else {
+            console.log("탭이 활성화되어 목록을 갱신하고 폴링을 시작합니다.");
+            fetchRooms();
+            startPolling();
+        }
+    });
+
     fetchRooms();
-    setInterval(fetchRooms, 1000);
+    startPolling();
 </script>
 </body>
 </html>

@@ -3,9 +3,10 @@ package main
 import (
 	"log"
 
+	"strconv"
+
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"strconv"
 )
 
 func main() {
@@ -17,14 +18,28 @@ func main() {
 	roomManager := NewRoomManager()
 
 	// 방 목록 조회 API
-	app.Get("/api/rooms", func (c *fiber.Ctx) error {
+	app.Get("/api/rooms", func(c *fiber.Ctx) error {
 		rooms := roomManager.GetRooms()
 		return c.JSON(rooms)
 	})
 
+	// 방 생성 요청을 위한 구조체
+	type CreateRoomRequest struct {
+		RoomName string `json:"roomName"`
+	}
+
 	app.Post("/api/rooms", func(c *fiber.Ctx) error {
-		game := roomManager.MakeRoom("New Room") //나중에 방 이름 설정 할 수 있도록 세팅 변경.
-		return c.JSON(fiber.Map{"id": game.RoomId, "room_name": game.RoomName})
+		req := new(CreateRoomRequest)
+		if err := c.BodyParser(req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse request"})
+		}
+
+		if req.RoomName == "" {
+			req.RoomName = "새로운 방" // 이름이 없으면 기본값 사용
+		}
+
+		game := roomManager.MakeRoom(req.RoomName)
+		return c.JSON(fiber.Map{"id": game.RoomId, "roomName": game.RoomName})
 	})
 
 	//websocket 핸들러
@@ -32,7 +47,7 @@ func main() {
 		roomId := c.Params("roomId")
 
 		name := c.Query("name")
-		
+
 		if name == "" {
 			name = "user"
 		}
@@ -52,7 +67,6 @@ func main() {
 
 		game.AddClient(c, name)
 	}))
-
 
 	log.Println("listening on :3000")
 	if err := app.Listen(":3000"); err != nil {

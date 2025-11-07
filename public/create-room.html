@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>새로운 방 만들기</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f2f5; margin: 0; }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+        input { width: 80%; padding: 10px; margin-bottom: 20px; font-size: 1rem; }
+        button { padding: 10px 20px; font-size: 1rem; cursor: pointer; border-radius: 4px; border: none; background-color: #28a745; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>방 이름 설정</h1>
+        <form id="create-room-form">
+            <input type="text" id="room-name-input" placeholder="방 이름을 입력하세요" required autofocus>
+            <br>
+            <button type="submit">방 만들기</button>
+        </form>
+    </div>
+
+<script>
+    document.getElementById('create-room-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const roomNameInput = document.getElementById('room-name-input');
+        const roomName = roomNameInput.value.trim();
+
+        if (!roomName) {
+            alert('방 이름을 입력해주세요.');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/rooms', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ roomName: roomName }),
+            });
+
+            if (!response.ok) {
+                throw new Error('방 생성에 실패했습니다.');
+            }
+
+            const newRoom = await response.json();
+            
+            // 생성된 방으로 바로 이동
+            const userName = prompt("게임에서 사용할 이름을 입력하세요:", "익명");
+            window.location.href = `/room.html?id=${newRoom.id}&roomName=${encodeURIComponent(newRoom.roomName)}&name=${encodeURIComponent(userName || '익명')}`;
+
+        } catch (error) {
+            console.error('Error creating room:', error);
+            alert('방을 생성하는 중 오류가 발생했습니다.');
+        }
+    });
+</script>
+</body>
+</html>

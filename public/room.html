@@ -62,9 +62,9 @@
     // --- WebSocket 설정 ---
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('id');
-    const room_name = urlParams.get('room_name') || '이름 없는 방';
+    const roomName = urlParams.get('roomName') || '이름 없는 방';
     const name = urlParams.get('name') || 'user';
-    roomTitle.textContent = `방 #${roomId} - ${room_name}`;
+    roomTitle.textContent = `방 #${roomId} - ${roomName}`;
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/${roomId}?name=${name}`);
