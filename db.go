@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"fmt"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -30,6 +31,22 @@ func IsWordInDB(word string) bool {
 	err := DB.Where("word = ?", word).First(&result).Error
 
 	return err == nil
+}
+
+func GetRandomWordByLength(length int) (string, error) {
+	if DB == nil {
+		log.Println("Database is not initialized.")
+		return "", fmt.Errorf("database is not initialized")
+	}
+	
+	var result Word
+	err := DB.Raw("SELECT * FROM kr WHERE LENGTH(word) = ? ORDER BY RANDOM() LIMIT 1", length).Scan(&result).Error
+
+	if err != nil {
+		return "", err
+	}
+	
+	return result.Word, nil
 }
 
 // InitDB 함수는 한번만 호출되게 해야함. game에서 해야하나..
