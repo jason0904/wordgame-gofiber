@@ -20,6 +20,7 @@ type Game struct {
 	manager       *RoomManager
 	hostUserId    string
 	lastWord      string
+	startword     string
 	usedWords     map[string]bool
 	players       []*User
 	currentUserID string
@@ -47,6 +48,7 @@ func NewGame(roomname string, roomId int, manager *RoomManager) *Game {
 		usedWords: make(map[string]bool),
 		players:   make([]*User, 0),
 		message:   "플레이어를 기다리는 중...",
+		startword: "",
 		started:   false, //로비상태로 유지.
 	}
 }
@@ -182,6 +184,7 @@ func (g *Game) endGame(message string) {
 
 func (g *Game) reset() {
 
+	g.startword = ""
 	g.lastWord = ""
 	g.usedWords = make(map[string]bool)
 	g.gameover = false
@@ -199,6 +202,9 @@ func (g *Game) startGame() {
 		return
 	}
 	randomPlayerIndex := g.selectRandomPlayerIndex()
+	g.startword = g.makeStartWord()
+	g.lastWord = g.startword
+	g.usedWords[g.startword] = true
 	g.started = true
 	g.gameover = false
 	g.currentUserID = g.players[randomPlayerIndex].ID
@@ -210,9 +216,17 @@ func (g *Game) broadcastGameState() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	players := make([]string, len(g.players))
+	type playerInfo struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+
+	players := make([]playerInfo, len(g.players))
 	for i, player := range g.players {
-		players[i] = player.Name
+		players[i] = playerInfo{
+			ID:   player.ID,
+			Name: player.Name,
+		}
 	}
 
 	stateToSend := fiber.Map{
@@ -346,4 +360,14 @@ func (g *Game) generateUniqueID() string {
 
 func (g *Game) selectRandomPlayerIndex() int {
 	return makeRandomNumber(0, len(g.players)) 
-} 
+}
+
+func (g *Game) makeStartWord() string {
+	randomWordLength := makeRandomNumber(2, 6)
+	word, err := GetRandomWordByLength(randomWordLength)
+	if err != nil {
+		log.Println("Error getting random start word:", err)
+		return "사과" // 기본 단어 반환
+	}
+	return word
+}
