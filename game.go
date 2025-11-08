@@ -316,7 +316,5 @@ func (g *Game) setNextPlayerTurn(currentUserID string) {
 }
 
 func wordDBCheck(word string) bool {
-	//일단 true 반환.
-
-	return true
+	return IsWordInDB(word)
 }

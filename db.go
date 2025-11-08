@@ -1,8 +1,8 @@
 package main
 
 import (
-	"log"
 	"fmt"
+	"log"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -38,24 +38,23 @@ func GetRandomWordByLength(length int) (string, error) {
 		log.Println("Database is not initialized.")
 		return "", fmt.Errorf("database is not initialized")
 	}
-	
+
 	var result Word
 	err := DB.Raw("SELECT * FROM kr WHERE LENGTH(word) = ? ORDER BY RANDOM() LIMIT 1", length).Scan(&result).Error
 
 	if err != nil {
 		return "", err
 	}
-	
+
 	return result.Word, nil
 }
 
-// InitDB 함수는 한번만 호출되게 해야함. game에서 해야하나..
-func InitDB() {
-	//db 출처 https://github.com/korean-word-game/db?tab=readme-ov-file
+func InitDB() error {
 	db, err := gorm.Open(sqlite.Open("kr_korean.db"), &gorm.Config{})
 	if err != nil {
-		panic("failed to connect database")
+		return fmt.Errorf("failed to connect database: %w", err)
 	}
 	DB = db
 	log.Println("Database connection successfully established.")
+	return nil
 }

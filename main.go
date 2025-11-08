@@ -16,6 +16,10 @@ func main() {
 	app.Static("/", "./public")
 
 	roomManager := NewRoomManager()
+	
+	if err := InitDB(); err != nil {
+		log.Fatalf("Database initialization failed: %v", err)
+	}
 
 	// 방 목록 조회 API
 	app.Get("/api/rooms", func(c *fiber.Ctx) error {
