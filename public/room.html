@@ -100,7 +100,6 @@
     </div>
 
     <script>
-
         const lobbyView = document.getElementById('lobby-view');
         const gameView = document.getElementById('game-view');
         const roomTitle = document.getElementById('room-title');
@@ -108,7 +107,7 @@
         const startGameBtn = document.getElementById('start-game-btn');
         const playersEl = document.getElementById('players');
 
-        let myId = ''; 
+        let myId = '';
 
         // WebSocket 설정
         const urlParams = new URLSearchParams(window.location.search);
@@ -146,6 +145,14 @@
             ws.send(JSON.stringify({ type: 'reset_game' }));
         });
 
+        function renderPlayerItem(playerStr) {
+            const li = document.createElement('li');
+
+            li.dataset.playerId = String(playerStr);
+            li.textContent = String(playerStr);
+            return li;
+        }
+
         function updateUI(state) {
             if (state.isStarted) {
                 lobbyView.classList.add('hidden');
@@ -155,25 +162,34 @@
                 gameView.classList.add('hidden');
             }
 
-            const playerLists = [lobbyPlayers, playersEl];
-            playerLists.forEach(list => list.innerHTML = '');
+            lobbyPlayers.innerHTML = '';
+            playersEl.innerHTML = '';
 
+            // players가 문자열 배열("이름#id")
             if (state.players && Array.isArray(state.players)) {
-                state.players.forEach(playerName => {
-                    const li = document.createElement('li');
-                    li.textContent = playerName;
-
-                    playerLists.forEach(list => list.appendChild(li.cloneNode(true)));
+                state.players.forEach(playerStr => {
+                    const liLobby = renderPlayerItem(playerStr);
+                    const liGame = liLobby.cloneNode(true);
+                    lobbyPlayers.appendChild(liLobby);
+                    playersEl.appendChild(liGame);
                 });
             }
 
+            document.querySelectorAll('#players li').forEach(item => {
+                const base = item.dataset.playerId || item.textContent;
+                item.classList.remove('current-turn');
+                item.textContent = base;
+            });
+
             if (state.isStarted && state.currentTurnPlayerId) {
-                const allPlayerItems = document.querySelectorAll('#players li');
-                allPlayerItems.forEach(item => {
-                    if (state.currentTurnPlayerId === myId) {
-                        if (item.textContent.includes(name)) {
-                            item.classList.add('current-turn');
-                            item.textContent += ' (내 차례)';
+                const items = Array.from(document.querySelectorAll('#players li'));
+                items.forEach(item => {
+                    if (String(item.dataset.playerId.split('#').pop()) === state.currentTurnPlayerId) {
+                        item.classList.add('current-turn');
+                        if (state.currentTurnPlayerId === myId) {
+                            item.textContent = `${item.dataset.playerId} (내 차례)`;
+                        } else {
+                            item.textContent = `${item.dataset.playerId} (현재 차례)`;
                         }
                     }
                 });
@@ -194,7 +210,6 @@
                     input.focus();
                 }
             } else { // 로비 상태 업데이트
-                // 호스트만 게임 시작 버튼을 볼 수 있도록 처리
                 startGameBtn.style.display = (state.hostUserId === myId) ? 'block' : 'none';
             }
         }

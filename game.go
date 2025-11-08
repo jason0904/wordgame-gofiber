@@ -208,7 +208,8 @@ func (g *Game) startGame() {
 	g.started = true
 	g.gameover = false
 	g.currentUserID = g.players[randomPlayerIndex].ID
-	g.message = "게임 시작! " + g.currentUserID + "님부터 시작하세요."
+	currentUserName := g.players[randomPlayerIndex].Name
+	g.message = "게임 시작! " + g.makeNameToDisplay(g.currentUserID, currentUserName) + "님부터 시작하세요."
 	log.Printf("Game started in room %d", g.RoomId)
 }
 
@@ -216,17 +217,10 @@ func (g *Game) broadcastGameState() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	type playerInfo struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
 
-	players := make([]playerInfo, len(g.players))
+	players := make([]string, len(g.players))
 	for i, player := range g.players {
-		players[i] = playerInfo{
-			ID:   player.ID,
-			Name: player.Name,
-		}
+		players[i] = g.makeNameToDisplay(player.ID, player.Name)
 	}
 
 	stateToSend := fiber.Map{
@@ -325,7 +319,8 @@ func (g *Game) setNextPlayerTurn(currentUserID string) {
 		if p.ID == currentUserID {
 			nextPlayerIndex := (i + 1) % len(g.players)
 			g.currentUserID = g.players[nextPlayerIndex].ID
-			g.message = g.currentUserID + "님의 차례입니다."
+			nextPlayerName := g.players[nextPlayerIndex].Name
+			g.message = g.makeNameToDisplay(nextPlayerName, g.currentUserID) + "님의 차례입니다."
 			return
 		}
 	}
@@ -370,4 +365,8 @@ func (g *Game) makeStartWord() string {
 		return "사과" // 기본 단어 반환
 	}
 	return word
+}
+
+func (g *Game) makeNameToDisplay(id string, name string) string {
+	return name + "#" + id
 }
