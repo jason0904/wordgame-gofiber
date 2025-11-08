@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+	"strconv"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -51,7 +52,8 @@ func NewGame(roomname string, roomId int, manager *RoomManager) *Game {
 }
 
 func (g *Game) AddClient(conn *websocket.Conn, name string) {
-	user := NewUser(conn, conn.RemoteAddr().String(), name)
+	id := g.generateUniqueID()
+	user := NewUser(conn, id, name)
 	user.game = g
 
 	g.room.register <- user
@@ -129,7 +131,7 @@ func (g *Game) handlePlay(user *User, word string) {
 	if word == "" {
 		g.message = "단어를 입력해주세요."
 		g.mu.Unlock()
-		g.broadcastGameState() // 메시지만 업데이트하고 상태 전파
+		g.broadcastGameState()
 		return
 	}
 
@@ -196,10 +198,10 @@ func (g *Game) startGame() {
 	if g.started || len(g.players) == 0 {
 		return
 	}
-
+	randomPlayerIndex := g.selectRandomPlayerIndex()
 	g.started = true
 	g.gameover = false
-	g.currentUserID = g.players[0].ID
+	g.currentUserID = g.players[randomPlayerIndex].ID
 	g.message = "게임 시작! " + g.currentUserID + "님부터 시작하세요."
 	log.Printf("Game started in room %d", g.RoomId)
 }
@@ -318,3 +320,30 @@ func (g *Game) setNextPlayerTurn(currentUserID string) {
 func wordDBCheck(word string) bool {
 	return IsWordInDB(word)
 }
+
+func (g *Game) generateUniqueID() string {
+    const maxAttempts = 10000
+    for i := 0; i < maxAttempts; i++ {
+        n := makeRandomNumber(1000, 10000)
+		id := strconv.Itoa(n)
+        g.mu.Lock()
+        exists := false
+        for _, p := range g.players {
+            if p.ID == id {
+                exists = true
+                break
+            }
+        }
+        g.mu.Unlock()
+
+        if !exists {
+            return id
+        }
+    }
+	log.Println("Warning: generateUniqueID reached max attempts, returning fallback ID")
+	return "0000"
+}
+
+func (g *Game) selectRandomPlayerIndex() int {
+	return makeRandomNumber(0, len(g.players)) 
+} 
