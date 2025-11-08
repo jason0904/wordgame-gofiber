@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -16,7 +17,6 @@ type Word struct {
 	Part string `gorm:"column:part"`
 }
 
-// GORM에게 kr테이블을 사용함을 알려줌.
 func (Word) TableName() string {
 	return "kr"
 }
@@ -27,8 +27,17 @@ func IsWordInDB(word string) bool {
 		return false
 	}
 
+	w := strings.TrimSpace(word)
+	normalized := strings.ReplaceAll(w, " ", "")
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	normalized = strings.ReplaceAll(normalized, "^", "")
+
 	var result Word
-	err := DB.Where("word = ?", word).First(&result).Error
+	// 원문 일치 또는 구분자 제거 후 일치 검사
+	err := DB.Raw(
+		"SELECT * FROM kr WHERE word = ? OR REPLACE(REPLACE(REPLACE(word, '-', ''), '^', ''), ' ', '') = ? LIMIT 1",
+		word, normalized,
+	).Scan(&result).Error
 
 	return err == nil
 }
@@ -46,7 +55,12 @@ func GetRandomWordByLength(length int) (string, error) {
 		return "", err
 	}
 
-	return result.Word, nil
+	randomWord := strings.TrimSpace(result.Word)
+	normalized := strings.ReplaceAll(randomWord, " ", "")
+	normalized = strings.ReplaceAll(normalized, "-", "")
+	normalized = strings.ReplaceAll(normalized, "^", "")
+
+	return normalized, nil
 }
 
 func InitDB() error {
