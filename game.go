@@ -3,11 +3,11 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
-	"strconv"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -23,6 +23,7 @@ type Game struct {
 	startword     string
 	usedWords     map[string]bool
 	players       []*User
+	spectators    []*User
 	currentUserID string
 	gameover      bool
 	started       bool
@@ -41,15 +42,16 @@ func NewGame(roomname string, roomId int, manager *RoomManager) *Game {
 	go room.run()
 
 	return &Game{
-		room:      room,
-		RoomName:  roomname,
-		RoomId:    roomId,
-		manager:   manager,
-		usedWords: make(map[string]bool),
-		players:   make([]*User, 0),
-		message:   "플레이어를 기다리는 중...",
-		startword: "",
-		started:   false, //로비상태로 유지.
+		room:       room,
+		RoomName:   roomname,
+		RoomId:     roomId,
+		manager:    manager,
+		usedWords:  make(map[string]bool),
+		players:    make([]*User, 0),
+		spectators: make([]*User, 0),
+		message:    "플레이어를 기다리는 중...",
+		startword:  "",
+		started:    false, //로비상태로 유지.
 	}
 }
 
@@ -137,9 +139,15 @@ func (g *Game) handlePlay(user *User, word string) {
 		return
 	}
 
+	// 이미 사용된 단어이면 탈락 처리(관전모드로 전환)
 	if g.usedWords[word] {
-		g.mu.Unlock() // endGame이 락을 관리하므로 먼저 언락
-		g.endGame("이미 사용된 단어입니다. 게임 종료!")
+		winner, msg := g.eliminatePlayerUnlocked(user, "이미 사용된 단어입니다.")
+		g.mu.Unlock()
+		if winner {
+			g.endGame(msg)
+		} else {
+			g.broadcastGameState()
+		}
 		return
 	}
 
@@ -147,16 +155,27 @@ func (g *Game) handlePlay(user *User, word string) {
 		lastRune, _ := utf8.DecodeLastRuneInString(g.lastWord)
 		firstRune, _ := utf8.DecodeRuneInString(word)
 		if lastRune != firstRune {
-			g.mu.Unlock() // endGame이 락을 관리하므로 먼저 언락
-			g.endGame("잘못된 단어입니다! '" + string(lastRune) + "' (으)로 시작해야 합니다. " + "게임 종료!")
+			winner, msg := g.eliminatePlayerUnlocked(user, "끝말이 맞지 않습니다.")
+			g.mu.Unlock()
+			if winner {
+				g.endGame(msg)
+			} else {
+				g.broadcastGameState()
+			}
 			return
 		} else if !wordDBCheck(word) {
-			g.mu.Unlock() // endGame이 락을 관리하므로 먼저 언락
-			g.endGame("사전에 없는 단어입니다! 게임 종료!")
+			winner, msg := g.eliminatePlayerUnlocked(user, "사전에 없는 단어입니다.")
+			g.mu.Unlock()
+			if winner {
+				g.endGame(msg)
+			} else {
+				g.broadcastGameState()
+			}
 			return
 		}
 	}
 
+	// 정상 제출
 	g.lastWord = word
 	g.usedWords[word] = true
 	g.setNextPlayerTurn(user.ID)
@@ -201,9 +220,22 @@ func (g *Game) startGame() {
 	if g.started || len(g.players) == 0 {
 		return
 	}
+
+	g.startNewRound()
+}
+
+func (g *Game) startNewRound() {
+
+	if len(g.players) == 0 {
+		// 플레이어가 없으면 자동으로 로비로 리셋
+		g.reset()
+		return
+	}
+
 	randomPlayerIndex := g.selectRandomPlayerIndex()
 	g.startword = g.makeStartWord()
 	g.lastWord = g.startword
+	g.usedWords = make(map[string]bool)
 	g.usedWords[g.startword] = true
 	g.started = true
 	g.gameover = false
@@ -213,19 +245,59 @@ func (g *Game) startGame() {
 	log.Printf("Game started in room %d", g.RoomId)
 }
 
+func (g *Game) eliminatePlayerUnlocked(user *User, reason string) (winner bool, winnerMsg string) {
+	for i, p := range g.players {
+		if p.ID == user.ID {
+			// 활성 플레이어에서 제거
+			g.players = append(g.players[:i], g.players[i+1:]...)
+			// 관전자 목록에 추가
+			g.spectators = append(g.spectators, user)
+			g.message = g.makeNameToDisplay(user.ID, user.Name) + "님이 탈락했습니다. 이유: " + reason
+
+			// 현재 차례가 탈락자였으면 다음 활성 플레이어로 이동
+			if g.currentUserID == user.ID {
+				if len(g.players) > 0 {
+					nextIdx := i % len(g.players)
+					g.currentUserID = g.players[nextIdx].ID
+				} else {
+					g.currentUserID = ""
+				}
+			}
+
+			// 승리 조건: 활성 플레이어가 한 명이면 우승 처리 (잠금은 호출자가 관리)
+			if len(g.players) == 1 {
+				winner := g.players[0]
+				msg := g.makeNameToDisplay(winner.ID, winner.Name) + "님이 최종 우승했습니다!"
+				g.gameover = true
+				g.message = msg
+				return true, msg
+			}
+
+			g.startNewRound()
+			return false, ""
+		}
+	}
+	return false, ""
+}
+
 func (g *Game) broadcastGameState() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-
 
 	players := make([]string, len(g.players))
 	for i, player := range g.players {
 		players[i] = g.makeNameToDisplay(player.ID, player.Name)
 	}
 
+	spectators := make([]string, len(g.spectators))
+	for i, s := range g.spectators {
+		spectators[i] = g.makeNameToDisplay(s.ID, s.Name)
+	}
+
 	stateToSend := fiber.Map{
 		"lastWord":            g.lastWord,
 		"players":             players,
+		"spectators":          spectators,
 		"currentTurnPlayerId": g.currentUserID,
 		"hostUserId":          g.hostUserId,
 		"isGameOver":          g.gameover,
@@ -241,7 +313,6 @@ func (g *Game) broadcastGameState() {
 
 	log.Printf("broadcasting state in room %d: %s", g.RoomId, string(bytes))
 	g.room.broadcast <- bytes
-
 }
 
 // 비공개 메서드
@@ -306,6 +377,15 @@ func (g *Game) removeUser(user *User) {
 			return
 		}
 	}
+
+	// 활성 플레이어에서 못찾으면 관전자 목록에서 제거
+	for i, s := range g.spectators {
+		if s.ID == user.ID {
+			g.spectators = append(g.spectators[:i], g.spectators[i+1:]...)
+			log.Printf("Spectator %s removed(ID : %s).", user.Name, user.ID)
+			break
+		}
+	}
 	g.mu.Unlock()
 }
 
@@ -331,30 +411,39 @@ func wordDBCheck(word string) bool {
 }
 
 func (g *Game) generateUniqueID() string {
-    const maxAttempts = 10000
-    for i := 0; i < maxAttempts; i++ {
-        n := makeRandomNumber(1000, 10000)
+	const maxAttempts = 10000
+	for i := 0; i < maxAttempts; i++ {
+		n := makeRandomNumber(1000, 10000)
 		id := strconv.Itoa(n)
-        g.mu.Lock()
-        exists := false
-        for _, p := range g.players {
-            if p.ID == id {
-                exists = true
-                break
-            }
-        }
-        g.mu.Unlock()
 
-        if !exists {
-            return id
-        }
-    }
+		g.mu.Lock()
+		exists := false
+		for _, p := range g.players {
+			if p.ID == id {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			for _, s := range g.spectators {
+				if s.ID == id {
+					exists = true
+					break
+				}
+			}
+		}
+		g.mu.Unlock()
+
+		if !exists {
+			return id
+		}
+	}
 	log.Println("Warning: generateUniqueID reached max attempts, returning fallback ID")
 	return "0000"
 }
 
 func (g *Game) selectRandomPlayerIndex() int {
-	return makeRandomNumber(0, len(g.players)) 
+	return makeRandomNumber(0, len(g.players))
 }
 
 func (g *Game) makeStartWord() string {
