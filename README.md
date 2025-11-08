@@ -25,18 +25,22 @@ gofiber와 websocket을 사용한 간단한 끝말잇기 게임입니다. 사용
     ```json
     {
       "lastWord": "string",
-      "players": ["string"],
-      "currentTurnPlayerId": "string",
-      "isGameOver": "boolean",
+      "players": ["string"],             // 표시형: "<name>#<id>" (예: "익명#8016")
+      "currentTurnPlayerId": "string",   // 짧은 ID (예: "8016")
+      "hostUserId": "string",            // 짧은 ID
+      "isGameOver": false,
+      "isStarted": true,
       "message": "string"
     }
     ```
 
 -   **필드 설명**:
-    -   `lastWord` (string): 마지막으로 입력된 유효한 단어. 게임 시작 시에는 빈 문자열(`""`).
+    -   `lastWord` (string): 마지막으로 입력된 유효한 단어. 게임 시작 시에는 사전DB에 있는 적당한 길이의 랜덤단어가 골라집니다.
     -   `players` (Array of strings): 현재 게임에 참가 중인 모든 플레이어의 ID 목록.
     -   `currentTurnPlayerId` (string): 현재 턴인 플레이어의 ID.
+    -   `hostUserID` (string): 현재 방장인 플레이어의 ID
     -   `isGameOver` (boolean): 게임이 종료되었는지 여부. `true`이면 더 이상 단어를 제출할 수 없습니다.
+    -   `isStarted` (boolean) 게임이 시작되었는지 여부. `true`이면 그 게임에 참가할 수 없습니다.
     -   `message` (string): "다음 차례:...", "게임 종료!" 등 현재 게임 상황을 설명하는 메시지.
 
 ### 3.2. 클라이언트 -> 서버 메시지
@@ -97,10 +101,12 @@ gofiber와 websocket을 사용한 간단한 끝말잇기 게임입니다. 사용
         ```json
         {
           "lastWord": "",
-          "players": ["<A의 ID>"],
+          "players": ["A#A의ID"],
           "currentTurnPlayerId": "<A의 ID>",
+          "hostUserId": "<A의 ID>",
           "isGameOver": false,
-          "message": "새 게임 시작! <A의 ID>님부터 시작하세요."
+          "isStarted": false,
+          "message": "새 게임을 시작할 수 있습니다. 플레이어를 기다립니다."
         }
         ```
 2.  **플레이어 B**가 `ws://.../ws`에 연결합니다.
@@ -109,13 +115,29 @@ gofiber와 websocket을 사용한 간단한 끝말잇기 게임입니다. 사용
         ```json
         {
           "lastWord": "",
-          "players": ["<A의 ID>", "<B의 ID>"],
+          "players": ["A#A의ID", "B#B의ID"],
           "currentTurnPlayerId": "<A의 ID>",
+          "hostUserId": "<A의 ID>",
           "isGameOver": false,
-          "message": "새 게임 시작! <A의 ID>님부터 시작하세요."
+          "isStarted": false,
+          "message": "새 게임을 시작할 수 있습니다. 플레이어를 기다립니다."
         }
         ```
-
+3.  **플레이어 A**가 게임을 시작합니다.
+    -   **클라이언트 A(방장) 송신**  `{"type": "start_game"}`
+    -   **서버**: 플레이어 A가 게임을 시작하고, 시작단어가 자동으로 골라집니다. 모든 클라이언트(A, B)에게 게임 상태를 전송합니다.
+    -   **클라이언트 A, B 수신**:
+        ```json
+        {
+          "lastWord": "대게",
+          "players": ["A#A의ID", "B#B의ID"],
+          "currentTurnPlayerId": "<A의 ID>",
+          "hostUserId": "<A의 ID>",
+          "isGameOver": false,
+          "isStarted": true,
+          "message": "게임 시작! A#A의ID님부터 시작하세요."
+        }
+        ```
 ### 시나리오 2: 정상적인 턴 진행
 
 1.  **플레이어 A**의 턴입니다. A가 단어 "게임"을 제출합니다.
@@ -125,10 +147,12 @@ gofiber와 websocket을 사용한 간단한 끝말잇기 게임입니다. 사용
         ```json
         {
           "lastWord": "게임",
-          "players": ["<A의 ID>", "<B의 ID>"],
-          "currentTurnPlayerId": "<B의 ID>",
+          "players": ["A#A의ID", "B#B의ID"],
+          "currentTurnPlayerId": "<A의 ID>",
+          "hostUserId": "<A의 ID>",
           "isGameOver": false,
-          "message": "다음 차례: <B의 ID>"
+          "isStarted": true,
+          "message": "B#B의ID님의 차례입니다.
         }
         ```
 
@@ -136,34 +160,37 @@ gofiber와 websocket을 사용한 간단한 끝말잇기 게임입니다. 사용
 
 1.  **플레이어 B**의 턴입니다. `lastWord`가 "게임"인데, B가 "자동차"를 제출합니다.
     -   **클라이언트 B 송신**: `{"type": "submit_word", "payload": "자동차"}`
-    -   **서버**: 단어가 규칙에 어긋남을 확인하고, 게임 종료 상태로 변경 후 A, B에게 전송합니다.
+    -   **서버**: 단어가 규칙에 어긋남을 확인하고, 게임 종료 상태로 변경 후 A, B에게 전송합니다. 그 후 자동으로 로비로 나가집니다.
     -   **클라이언트 A, B 수신**:
         ```json
         {
           "lastWord": "게임",
-          "players": ["<A의 ID>", "<B의 ID>"],
-          "currentTurnPlayerId": "<B의 ID>",
-          "isGameOver": true,
-          "message": "잘못된 단어입니다! '임' (으)로 시작해야 합니다. <B의 ID>님의 패배!"
+          "players": ["A#A의ID", "B#B의ID"],
+          "currentTurnPlayerId": "<A의 ID>",
+          "hostUserId": "<A의 ID>",
+          "isGameOver": false,
+          "isStarted": true,
+          "message": "잘못된 단어입니다! '임' (으)로 시작해야 합니다. B#B의ID님의 패배!"
         }
         ```
-
+    -   **클라이언트 B 송신**: `{"type": "reset_game"}`
 ## 5. 기능 구현 목록
 
 ### 유저
-- [ ] 유저는 본인의 아이디를 생성한다.
-- [ ] 유저는 방에 들어올 수 있다.
-- [ ] 유저는 방을 생성할 수 있다.
+- [x] 유저는 본인의 이름를 생성한다.
+- [x] 유저는 랜덤ID를 부여받는다.
+- [x] 유저는 방에 들어올 수 있다.
+- [x] 유저는 방을 생성할 수 있다.
 - [ ] 유저는 방에서 채팅을 칠 수 있다.
 
 ### 방
-- [ ] 유저가 들어오고 나갈 수 있다.
-- [ ] 방에 유저가 없으면 방은 없어진다. 
-- [ ] 방을 만든 유저가 방장이 된다.
-- [ ] 방장이 나갈 경우 남은 아무에게 방장을 양도한다.
-- [ ] 방장은 게임을 시작할 수 있다.
+- [x] 유저가 들어오고 나갈 수 있다.
+- [x] 방에 유저가 없으면 방은 없어진다. 
+- [x] 방을 만든 유저가 방장이 된다.
+- [x] 방장이 나갈 경우 남은 아무에게 방장을 양도한다.
+- [x] 방장은 게임을 시작할 수 있다.
 
 ### 게임
-- [ ] 시작 단어를 제공한다.
-- [ ] 단어가 사전db에 없고, 단어의 시작단어가 전 단어의 끝단어가 아닐 경우에 탈락한다.
+- [x] 시작 단어를 제공한다.
+- [x] 단어가 사전db에 없고, 단어의 시작단어가 전 단어의 끝단어가 아닐 경우에 탈락한다.
 - [ ] 가장 마지막에 남아있는 사람이 우승자다.
