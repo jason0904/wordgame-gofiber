@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/gofiber/contrib/websocket"
@@ -13,7 +14,7 @@ import (
 
 type Game struct {
 	room          *Room
-	RoomName      string       
+	RoomName      string
 	RoomId        int
 	manager       *RoomManager
 	hostUserId    string
@@ -29,14 +30,14 @@ type Game struct {
 
 type GameMessage struct {
 	Type    string `json:"type"`
-	Payload any    `json:"payload"` // 변경: 클라이언트가 보내는 키에 맞춤
+	Payload any    `json:"payload"`
 }
 
 func NewGame(roomname string, roomId int, manager *RoomManager) *Game {
 	//게임 생성시 룸도 같이 생성되게.
 	room := NewRoom()
 	go room.run()
-	
+
 	return &Game{
 		room:      room,
 		RoomName:  roomname,
@@ -93,6 +94,7 @@ func (g *Game) handleMessage(user *User, msg []byte) {
 	case "start_game":
 		if !g.started && user.ID == g.hostUserId {
 			g.startGame()
+			g.broadcastGameState()
 		}
 	case "submit_word":
 		if g.started {
@@ -107,30 +109,33 @@ func (g *Game) handleMessage(user *User, msg []byte) {
 		g.mu.Lock()
 		g.reset()
 		g.mu.Unlock()
+		g.broadcastGameState() // reset 후에 상태 전파
 	default:
 		log.Println("Unknown message type:", gameMessage.Type)
 	}
 
-	g.broadcastGameState()
+	// g.broadcastGameState()
 }
 
 func (g *Game) handlePlay(user *User, word string) {
 	g.mu.Lock()
-	defer g.mu.Unlock()
 
 	if g.gameover || g.currentUserID != user.ID {
+		g.mu.Unlock()
 		return
 	}
 
 	word = strings.TrimSpace(word)
 	if word == "" {
 		g.message = "단어를 입력해주세요."
+		g.mu.Unlock()
+		g.broadcastGameState() // 메시지만 업데이트하고 상태 전파
 		return
 	}
 
 	if g.usedWords[word] {
-		g.gameover = true
-		g.message = "이미 사용된 단어입니다. 게임 종료!"
+		g.mu.Unlock() // endGame이 락을 관리하므로 먼저 언락
+		g.endGame("이미 사용된 단어입니다. 게임 종료!")
 		return
 	}
 
@@ -138,8 +143,12 @@ func (g *Game) handlePlay(user *User, word string) {
 		lastRune, _ := utf8.DecodeLastRuneInString(g.lastWord)
 		firstRune, _ := utf8.DecodeRuneInString(word)
 		if lastRune != firstRune {
-			g.gameover = true
-			g.message = "잘못된 단어입니다! '" + string(lastRune) + "' (으)로 시작해야 합니다. " + "게임 종료!"
+			g.mu.Unlock() // endGame이 락을 관리하므로 먼저 언락
+			g.endGame("잘못된 단어입니다! '" + string(lastRune) + "' (으)로 시작해야 합니다. " + "게임 종료!")
+			return
+		} else if !wordDBCheck(word) {
+			g.mu.Unlock() // endGame이 락을 관리하므로 먼저 언락
+			g.endGame("사전에 없는 단어입니다! 게임 종료!")
 			return
 		}
 	}
@@ -147,6 +156,26 @@ func (g *Game) handlePlay(user *User, word string) {
 	g.lastWord = word
 	g.usedWords[word] = true
 	g.setNextPlayerTurn(user.ID)
+	g.mu.Unlock()
+	g.broadcastGameState() // 다음 턴 상태 전파
+}
+
+func (g *Game) endGame(message string) {
+	g.mu.Lock()
+	g.gameover = true
+	g.message = message
+	g.mu.Unlock()
+	log.Printf("game reset after endGame in room %d", g.RoomId)
+	g.broadcastGameState()
+
+	// 5초 후 게임을 리셋하여 로비로 돌아감
+	go func() {
+		time.Sleep(5 * time.Second)
+		g.mu.Lock()
+		g.reset()
+		g.mu.Unlock()
+		g.broadcastGameState()
+	}()
 }
 
 func (g *Game) reset() {
@@ -200,6 +229,7 @@ func (g *Game) broadcastGameState() {
 		return
 	}
 
+	log.Printf("broadcasting state in room %d: %s", g.RoomId, string(bytes))
 	g.room.broadcast <- bytes
 
 }
@@ -249,7 +279,6 @@ func (g *Game) removeUser(user *User) {
 				g.currentUserID = g.players[nextPlayerIndex].ID
 				g.message = "플레이어가 나갔습니다. 다음 차례: " + g.currentUserID
 			} else if len(g.players) == 0 {
-				// 플레이어가 0명이면 게임 초기화 및 삭제 플래그 설정
 				g.currentUserID = ""
 				g.message = "모든 플레이어가 나갔습니다. 새로운 플레이어를 기다립니다."
 				g.lastWord = ""
@@ -284,4 +313,10 @@ func (g *Game) setNextPlayerTurn(currentUserID string) {
 			return
 		}
 	}
+}
+
+func wordDBCheck(word string) bool {
+	//일단 true 반환.
+
+	return true
 }
