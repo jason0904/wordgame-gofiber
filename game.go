@@ -320,7 +320,7 @@ func (g *Game) setNextPlayerTurn(currentUserID string) {
 			nextPlayerIndex := (i + 1) % len(g.players)
 			g.currentUserID = g.players[nextPlayerIndex].ID
 			nextPlayerName := g.players[nextPlayerIndex].Name
-			g.message = g.makeNameToDisplay(nextPlayerName, g.currentUserID) + "님의 차례입니다."
+			g.message = g.makeNameToDisplay(g.currentUserID, nextPlayerName) + "님의 차례입니다."
 			return
 		}
 	}
