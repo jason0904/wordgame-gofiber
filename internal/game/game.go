@@ -216,6 +216,11 @@ func (g *Game) endGame(message string) {
 
 func (g *Game) reset() {
 
+	if g.gameover {
+		g.players = append(g.players, g.spectators...)
+		g.spectators = make([]*User, 0)
+	}
+
 	g.startword = ""
 	g.lastWord = ""
 	g.usedWords = make(map[string]bool)
