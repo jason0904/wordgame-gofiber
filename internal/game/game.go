@@ -8,18 +8,65 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+	"wordgame/internal/random"
+	"wordgame/internal/store"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-
-	"wordgame/internal/store"
-	"wordgame/internal/random"
 )
 
 const (
 	MinPlayersToStart  = 2
 	MinStartWordLength = 2
 	MaxStartWordLength = 6
+	MAXIDENTIFIER      = 9999
+	MINIDENTIFIER      = 1000
+	NORMALSTARTWORD    = "사과"
+	IDFALLBACK         = "0000"
+
+	WAITINGFORPLAYERSMSG = "플레이어를 기다리는 중..."
+	AVAILABLEMSG         = "새 게임을 시작할 수 있습니다. 플레이어를 기다립니다."
+	STARTMSG             = "게임이 시작되었습니다!"
+	STARTMSG2            = "님부터 시작하세요."
+	ELIMINATEDMSG        = "님이 탈락했습니다. 이유 : "
+	WINNERMSG            = "님이 승리했습니다!"
+	EXITMSG              = "님이 게임에서 나갔습니다. 다음 차례 : "
+	ALLEXITMSG           = "모든 플레이어가 나갔습니다. 새로운 플레이어를 기다립니다."
+	CURRENTTURNMSG       = "님의 차례입니다."
+
+	ALREADYSTARTEDMSG    = "이미 게임이 시작되었습니다."
+	NOHOSTPRIVILEGESMSG  = "게임을 시작할 권한이 없습니다. 호스트만 게임을 시작할 수 있습니다."
+	MINPLAYERTOSTARTMSG  = "게임을 시작하려면 최소 "
+	MINPLAYERTOSTARTMSG2 = "명의 플레이어가 필요합니다."
+
+	TYPEWORDMSG        = "단어를 입력하세요."
+	MINWORDLENGTHMSG   = "단어는 최소 2자 이상이어야 합니다."
+	WORDALREADYUSEDMSG = "이미 사용된 단어입니다."
+	WORDNOTINDICTMSG   = "사전에 없는 단어입니다."
+	WORDMISMATCHMSG    = "끝말이 맞지 않습니다."
+
+	STARTJSONTYPE  = "start_game"
+	SUBMITJSONTYPE = "submit_word"
+	RESETJSONTYPE  = "reset_game"
+	WELCOMEJSONTYPE  = "welcome"
+
+	MARSHALERROR = "marshal error"
+	UNMARSHALERROR = "unmarshal error"
+	FAILSENDWELCOME = "failed to send welcome to %s: %v"
+	SUBMITPAYLOADERROR = "invalid payload for submit_word: "
+	UNKNOWNMESSAGETYPE = "unknown message type: "
+	ENDLOGMSG = "game reset after endGame in room %d"
+	RESETLOGMSG = "game reset in room %d"
+	STARTLOGMSG = "Game started in room %d"
+	BROADCASTLOGMSG = "broadcasting state in room %d: %s"
+	HOSTLOGMSG = "Player %s is now the host(ID : %s)."
+	HOSTCHANGELOGMSG = "Host user changed to %s"
+	ENTERPLAYERLOGMSG = "Player %s Enter the Game(ID : %s)"
+	EXITPLAYERLOGMSG  = "Player %s Exit the Game(ID : %s)"
+	DELETEROOMLOGMSG  = "Deleting empty room %d"
+	REMOVESPECTATORLOGMSG = "Spectator %s removed(ID : %s)."
+	STARTINGWORDERRORLOGMSG = "Error getting random start word."
+	IDMAXATTEMPTSLOGMSG = "Warning: generateUniqueID reached max attempts, returning fallback ID"
 )
 
 type Game struct {
@@ -38,6 +85,8 @@ type Game struct {
 	started       bool
 	message       string
 	mu            sync.Mutex
+	store         store.DBManager
+	random        random.Manager
 }
 
 type GameMessage struct {
@@ -45,7 +94,7 @@ type GameMessage struct {
 	Payload any    `json:"payload"`
 }
 
-func NewGame(roomname string, roomId int, manager *RoomManager) *Game {
+func NewGame(roomname string, roomId int, manager *RoomManager, rnd random.Manager, store store.DBManager) *Game {
 	//게임 생성시 룸도 같이 생성되게.
 	room := NewRoom()
 	go room.Run()
@@ -58,9 +107,11 @@ func NewGame(roomname string, roomId int, manager *RoomManager) *Game {
 		usedWords:  make(map[string]bool),
 		players:    make([]*User, 0),
 		spectators: make([]*User, 0),
-		message:    "플레이어를 기다리는 중...",
+		message:    WAITINGFORPLAYERSMSG,
 		startword:  "",
 		started:    false, //로비상태로 유지.
+		random:     rnd,
+		store:      store,
 	}
 }
 
@@ -74,15 +125,15 @@ func (g *Game) AddClient(conn *websocket.Conn, name string) {
 
 	// 새로 접속한 클라이언트에만 개인 welcome 메시지(자기 ID) 전송
 	welcome := map[string]string{
-		"type":   "welcome",
+		"type":   WELCOMEJSONTYPE,
 		"yourId": user.ID,
 	}
 	if wb, err := json.Marshal(welcome); err == nil {
 		if err := user.conn.WriteMessage(websocket.TextMessage, wb); err != nil {
-			log.Printf("failed to send welcome to %s: %v", user.ID, err)
+			log.Printf(FAILSENDWELCOME, user.ID, err)
 		}
 	} else {
-		log.Println("marshal welcome error:", err)
+		log.Println(MARSHALERROR, err)
 	}
 
 	// 현재 상태 전파
@@ -92,7 +143,7 @@ func (g *Game) AddClient(conn *websocket.Conn, name string) {
 	user.ReadLoop()
 
 	// readLoop 종료 시 연결 정리
-	g.room.unregister <- user	
+	g.room.unregister <- user
 	g.removeUser(user)
 	g.broadcastGameState()
 }
@@ -101,30 +152,30 @@ func (g *Game) HandleMessage(user *User, msg []byte) {
 	var gameMessage GameMessage
 
 	if err := json.Unmarshal(msg, &gameMessage); err != nil {
-		log.Println("unmarshal error:", err)
+		log.Println(UNMARSHALERROR, err)
 		return
 	}
 
 	switch gameMessage.Type {
-	case "start_game":
+	case STARTJSONTYPE:
 		g.startGame(user)
 		g.broadcastGameState()
-	case "submit_word":
+	case SUBMITJSONTYPE:
 		if g.started {
 			word, ok := gameMessage.Payload.(string)
 			if !ok {
-				log.Println("Invalid payload for submit_word:", gameMessage.Payload)
+				log.Println(SUBMITPAYLOADERROR, gameMessage.Payload)
 				return
 			}
 			g.handlePlay(user, word)
 		}
-	case "reset_game":
+	case RESETJSONTYPE:
 		g.mu.Lock()
 		g.reset()
 		g.mu.Unlock()
 		g.broadcastGameState() // reset 후에 상태 전파
 	default:
-		log.Println("Unknown message type:", gameMessage.Type)
+		log.Println(UNKNOWNMESSAGETYPE, gameMessage.Type)
 	}
 
 }
@@ -141,21 +192,21 @@ func (g *Game) handlePlay(user *User, word string) {
 
 	word = strings.TrimSpace(word)
 	if word == "" {
-		g.message = "단어를 입력해주세요."
+		g.message = TYPEWORDMSG
 		g.mu.Unlock()
 		g.broadcastGameState()
 		return
 	}
 
 	if utf8.RuneCountInString(word) < 2 {
-		g.message = "단어는 최소 2자 이상이어야 합니다."
+		g.message = MINWORDLENGTHMSG
 		g.mu.Unlock()
 		g.broadcastGameState()
 		return
 	}
 
 	if g.usedWords[word] {
-		winner, msg := g.eliminatePlayerUnlocked(user, "이미 사용된 단어입니다.")
+		winner, msg := g.eliminatePlayerUnlocked(user, WORDALREADYUSEDMSG)
 		g.mu.Unlock()
 		if winner {
 			g.endGame(msg)
@@ -169,7 +220,7 @@ func (g *Game) handlePlay(user *User, word string) {
 		lastRune, _ := utf8.DecodeLastRuneInString(g.lastWord)
 		firstRune, _ := utf8.DecodeRuneInString(word)
 		if lastRune != firstRune {
-			winner, msg := g.eliminatePlayerUnlocked(user, "끝말이 맞지 않습니다.")
+			winner, msg := g.eliminatePlayerUnlocked(user, WORDMISMATCHMSG)
 			g.mu.Unlock()
 			if winner {
 				g.endGame(msg)
@@ -177,8 +228,8 @@ func (g *Game) handlePlay(user *User, word string) {
 				g.broadcastGameState()
 			}
 			return
-		} else if !wordDBCheck(word) {
-			winner, msg := g.eliminatePlayerUnlocked(user, "사전에 없는 단어입니다.")
+		} else if !g.wordDBCheck(word) {
+			winner, msg := g.eliminatePlayerUnlocked(user, WORDNOTINDICTMSG)
 			g.mu.Unlock()
 			if winner {
 				g.endGame(msg)
@@ -201,7 +252,7 @@ func (g *Game) endGame(message string) {
 	g.gameover = true
 	g.message = message
 	g.mu.Unlock()
-	log.Printf("game reset after endGame in room %d", g.RoomId)
+	log.Printf(RESETLOGMSG, g.RoomId)
 	g.broadcastGameState()
 
 	// 5초 후 게임을 리셋하여 로비로 돌아감
@@ -227,8 +278,8 @@ func (g *Game) reset() {
 	g.gameover = false
 	g.started = false
 	g.currentUserID = ""
-	g.message = "새 게임을 시작할 수 있습니다. 플레이어를 기다립니다."
-	log.Printf("Game reset in room %d", g.RoomId)
+	g.message = AVAILABLEMSG
+	log.Printf(RESETLOGMSG, g.RoomId)
 }
 
 func (g *Game) startGame(user *User) {
@@ -236,17 +287,17 @@ func (g *Game) startGame(user *User) {
 	defer g.mu.Unlock()
 
 	if g.started {
-		g.message = "이미 게임이 시작되었습니다."
+		g.message = ALREADYSTARTEDMSG
 		return
 	}
 
 	if g.hostUserId != user.ID {
-		g.message = "게임을 시작할 권한이 없습니다. 호스트만 게임을 시작할 수 있습니다."
+		g.message = NOHOSTPRIVILEGESMSG
 		return
 	}
 
 	if len(g.players) < MinPlayersToStart {
-		g.message = "게임을 시작하려면 최소 " + strconv.Itoa(MinPlayersToStart) + "명의 플레이어가 필요합니다."
+		g.message = MINPLAYERTOSTARTMSG + strconv.Itoa(MinPlayersToStart) + MINPLAYERTOSTARTMSG2
 		return
 	}
 
@@ -270,8 +321,8 @@ func (g *Game) startNewRound() {
 	g.gameover = false
 	g.currentUserID = g.players[randomPlayerIndex].ID
 	currentUserName := g.players[randomPlayerIndex].Name
-	g.message = "게임 시작! " + g.makeNameToDisplay(g.currentUserID, currentUserName) + "님부터 시작하세요."
-	log.Printf("Game started in room %d", g.RoomId)
+	g.message = STARTMSG + g.makeNameToDisplay(g.currentUserID, currentUserName) + STARTMSG2
+	log.Printf(STARTLOGMSG, g.RoomId)
 }
 
 func (g *Game) eliminatePlayerUnlocked(user *User, reason string) (winner bool, winnerMsg string) {
@@ -279,7 +330,7 @@ func (g *Game) eliminatePlayerUnlocked(user *User, reason string) (winner bool, 
 		if p.ID == user.ID {
 			g.players = append(g.players[:i], g.players[i+1:]...)
 			g.spectators = append(g.spectators, user)
-			g.message = g.makeNameToDisplay(user.ID, user.Name) + "님이 탈락했습니다. 이유: " + reason
+			g.message = g.makeNameToDisplay(user.ID, user.Name) + ELIMINATEDMSG + reason
 
 			// 현재 차례가 탈락자였으면 다음 활성 플레이어로 이동
 			if g.currentUserID == user.ID {
@@ -294,7 +345,7 @@ func (g *Game) eliminatePlayerUnlocked(user *User, reason string) (winner bool, 
 			// 승리 조건: 활성 플레이어가 한 명이면 우승 처리 (잠금은 호출자가 관리)
 			if len(g.players) == 1 {
 				winner := g.players[0]
-				msg := g.makeNameToDisplay(winner.ID, winner.Name) + "님이 최종 우승했습니다!"
+				msg := g.makeNameToDisplay(winner.ID, winner.Name) + WINNERMSG
 				g.gameover = true
 				g.message = msg
 				return true, msg
@@ -306,7 +357,6 @@ func (g *Game) eliminatePlayerUnlocked(user *User, reason string) (winner bool, 
 	}
 	return false, ""
 }
-
 
 func (g *Game) broadcastGameState() {
 	g.mu.Lock()
@@ -335,14 +385,13 @@ func (g *Game) broadcastGameState() {
 
 	bytes, err := json.Marshal(stateToSend)
 	if err != nil {
-		log.Println("marshal error:", err)
+		log.Println(MARSHALERROR, err)
 		return
 	}
 
-	log.Printf("broadcasting state in room %d: %s", g.RoomId, string(bytes))
+	log.Printf(BROADCASTLOGMSG, g.RoomId, string(bytes))
 	g.room.broadcast <- bytes
 }
-
 
 func (g *Game) addUser(user *User) {
 	g.mu.Lock()
@@ -356,10 +405,10 @@ func (g *Game) addUser(user *User) {
 
 	if len(g.players) == 1 {
 		g.hostUserId = user.ID
-		log.Printf("Player %s is now the host(ID : %s).", user.Name, user.ID)
+		log.Printf(HOSTLOGMSG, user.Name, user.ID)
 		g.reset()
 	}
-	log.Printf("Player %s Enter the Game(ID : %s)", user.Name, user.ID)
+	log.Printf(ENTERPLAYERLOGMSG, user.Name, user.ID)
 }
 
 func (g *Game) removeUser(user *User) {
@@ -369,14 +418,14 @@ func (g *Game) removeUser(user *User) {
 	for i, p := range g.players {
 		if p.ID == user.ID {
 			g.players = append(g.players[:i], g.players[i+1:]...)
-			log.Printf("Player %s removed from the game(ID : %s).", user.Name, user.ID)
+			log.Printf(EXITPLAYERLOGMSG, user.Name, user.ID)
 
 			if g.hostUserId == user.ID {
 				//유저 아무에게 호스트 권한 이전
 				if len(g.players) > 0 {
-					randomUser := g.players[random.MakeRandomNumber(0, len(g.players))].ID
+					randomUser := g.players[g.random.MakeRandomNumber(0, len(g.players))].ID
 					g.hostUserId = randomUser
-					log.Printf("Host user changed to %s", randomUser)
+					log.Printf(HOSTCHANGELOGMSG, randomUser)
 				} else {
 					g.hostUserId = ""
 				}
@@ -385,10 +434,10 @@ func (g *Game) removeUser(user *User) {
 			if g.currentUserID == user.ID && len(g.players) > 0 && !g.gameover {
 				nextPlayerIndex := i % len(g.players)
 				g.currentUserID = g.players[nextPlayerIndex].ID
-				g.message = "플레이어가 나갔습니다. 다음 차례: " + g.currentUserID
+				g.message = EXITMSG + g.currentUserID
 			} else if len(g.players) == 0 {
 				g.currentUserID = ""
-				g.message = "모든 플레이어가 나갔습니다. 새로운 플레이어를 기다립니다."
+				g.message = ALLEXITMSG
 				g.lastWord = ""
 				g.usedWords = make(map[string]bool)
 				g.gameover = false
@@ -398,7 +447,7 @@ func (g *Game) removeUser(user *User) {
 
 			// 데드락 가능성 때문에 언락후 삭제.
 			if shouldDelete && g.manager != nil {
-				log.Printf("Deleting empty room %d", g.RoomId)
+				log.Printf(DELETEROOMLOGMSG, g.RoomId)
 				g.manager.DeleteRoom(g.RoomId)
 			}
 			return
@@ -408,7 +457,7 @@ func (g *Game) removeUser(user *User) {
 	for i, s := range g.spectators {
 		if s.ID == user.ID {
 			g.spectators = append(g.spectators[:i], g.spectators[i+1:]...)
-			log.Printf("Spectator %s removed(ID : %s).", user.Name, user.ID)
+			log.Printf(REMOVESPECTATORLOGMSG, user.Name, user.ID)
 			break
 		}
 	}
@@ -426,20 +475,20 @@ func (g *Game) setNextPlayerTurn(currentUserID string) {
 			nextPlayerIndex := (i + 1) % len(g.players)
 			g.currentUserID = g.players[nextPlayerIndex].ID
 			nextPlayerName := g.players[nextPlayerIndex].Name
-			g.message = g.makeNameToDisplay(g.currentUserID, nextPlayerName) + "님의 차례입니다."
+			g.message = g.makeNameToDisplay(g.currentUserID, nextPlayerName) + CURRENTTURNMSG
 			return
 		}
 	}
 }
 
-func wordDBCheck(word string) bool {
-	return store.IsWordInDB(word)
+func (g *Game) wordDBCheck(word string) bool {
+	return g.store.IsWordInDB(word)
 }
 
 func (g *Game) generateUniqueID() string {
-	const maxAttempts = 10000
+	const maxAttempts = MAXIDENTIFIER - MINIDENTIFIER + 1
 	for i := 0; i < maxAttempts; i++ {
-		n := random.MakeRandomNumber(1000, 10000)
+		n := g.random.MakeRandomNumber(MINIDENTIFIER, MAXIDENTIFIER+1)
 		id := strconv.Itoa(n)
 
 		g.mu.Lock()
@@ -464,20 +513,20 @@ func (g *Game) generateUniqueID() string {
 			return id
 		}
 	}
-	log.Println("Warning: generateUniqueID reached max attempts, returning fallback ID")
-	return "0000"
+	log.Println(IDMAXATTEMPTSLOGMSG)
+	return IDFALLBACK
 }
 
 func (g *Game) selectRandomPlayerIndex() int {
-	return random.MakeRandomNumber(0, len(g.players))
+	return g.random.MakeRandomNumber(0, len(g.players))
 }
 
 func (g *Game) makeStartWord() string {
-	randomWordLength := random.MakeRandomNumber(MinStartWordLength, MaxStartWordLength) // 2자에서 6자 사이
-	word, err := store.GetRandomWordByLength(randomWordLength)
+	randomWordLength := g.random.MakeRandomNumber(MinStartWordLength, MaxStartWordLength) // 2자에서 6자 사이
+	word, err := g.store.GetRandomWordByLength(randomWordLength)
 	if err != nil {
-		log.Println("Error getting random start word:", err)
-		return "사과" // 기본 단어 반환
+		log.Println(STARTINGWORDERRORLOGMSG, err)
+		return NORMALSTARTWORD
 	}
 	return word
 }
