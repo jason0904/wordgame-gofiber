@@ -34,12 +34,17 @@ func IsWordInDB(word string) bool {
 
 	var result Word
 	// 원문 일치 또는 구분자 제거 후 일치 검사
-	err := DB.Raw(
+	res := DB.Raw(
 		"SELECT * FROM kr WHERE word = ? OR REPLACE(REPLACE(REPLACE(word, '-', ''), '^', ''), ' ', '') = ? LIMIT 1",
 		word, normalized,
-	).Scan(&result).Error
+	).Scan(&result)
 
-	return err == nil
+	if res.Error != nil {
+		log.Println("Error querying database:", res.Error)
+		return false
+	}
+
+	return res.RowsAffected > 0
 }
 
 func GetRandomWordByLength(length int) (string, error) {
