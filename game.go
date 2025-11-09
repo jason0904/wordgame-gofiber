@@ -120,7 +120,6 @@ func (g *Game) handleMessage(user *User, msg []byte) {
 		log.Println("Unknown message type:", gameMessage.Type)
 	}
 
-	// g.broadcastGameState()
 }
 
 func (g *Game) handlePlay(user *User, word string) {
@@ -134,6 +133,13 @@ func (g *Game) handlePlay(user *User, word string) {
 	word = strings.TrimSpace(word)
 	if word == "" {
 		g.message = "단어를 입력해주세요."
+		g.mu.Unlock()
+		g.broadcastGameState()
+		return
+	}
+
+	if len(word) == 1 {
+		g.message = "단어는 최소 2자 이상이어야 합니다."
 		g.mu.Unlock()
 		g.broadcastGameState()
 		return
@@ -175,12 +181,11 @@ func (g *Game) handlePlay(user *User, word string) {
 		}
 	}
 
-	// 정상 제출
 	g.lastWord = word
 	g.usedWords[word] = true
 	g.setNextPlayerTurn(user.ID)
 	g.mu.Unlock()
-	g.broadcastGameState() // 다음 턴 상태 전파
+	g.broadcastGameState()
 }
 
 func (g *Game) endGame(message string) {
@@ -248,9 +253,7 @@ func (g *Game) startNewRound() {
 func (g *Game) eliminatePlayerUnlocked(user *User, reason string) (winner bool, winnerMsg string) {
 	for i, p := range g.players {
 		if p.ID == user.ID {
-			// 활성 플레이어에서 제거
 			g.players = append(g.players[:i], g.players[i+1:]...)
-			// 관전자 목록에 추가
 			g.spectators = append(g.spectators, user)
 			g.message = g.makeNameToDisplay(user.ID, user.Name) + "님이 탈락했습니다. 이유: " + reason
 
@@ -378,7 +381,6 @@ func (g *Game) removeUser(user *User) {
 		}
 	}
 
-	// 활성 플레이어에서 못찾으면 관전자 목록에서 제거
 	for i, s := range g.spectators {
 		if s.ID == user.ID {
 			g.spectators = append(g.spectators[:i], g.spectators[i+1:]...)
@@ -447,7 +449,7 @@ func (g *Game) selectRandomPlayerIndex() int {
 }
 
 func (g *Game) makeStartWord() string {
-	randomWordLength := makeRandomNumber(2, 6)
+	randomWordLength := makeRandomNumber(2, 7) // 2자에서 6자 사이 
 	word, err := GetRandomWordByLength(randomWordLength)
 	if err != nil {
 		log.Println("Error getting random start word:", err)
