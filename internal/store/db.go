@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var DB *gorm.DB
 
 type Word struct {
 	ID   int    `gorm:"column:id"`
@@ -17,11 +16,24 @@ type Word struct {
 	Part string `gorm:"column:part"`
 }
 
+type DBManager struct {
+	DB *gorm.DB
+}
+
+func NewDBManager() (*DBManager, error) {
+	db, err := gorm.Open(sqlite.Open("data/kr_korean.db"), &gorm.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect database: %w", err)
+	}
+	log.Println("Database connection successfully established.")
+	return &DBManager{DB: db}, nil
+}
+
 func (Word) TableName() string {
 	return "kr"
 }
-func IsWordInDB(word string) bool {
-	if DB == nil {
+func (db *DBManager) IsWordInDB(word string) bool {
+	if db.DB == nil {
 		log.Println("Database is not initialized.")
 		return false
 	}
@@ -34,7 +46,7 @@ func IsWordInDB(word string) bool {
 	}
 
 	var result Word
-	res := DB.Raw(
+	res := db.DB.Raw(
 		"SELECT * FROM kr WHERE word = ? OR REPLACE(REPLACE(REPLACE(word, '-', ''), '^', ''), ' ', '') = ? LIMIT 1",
 		w, normalized,
 	).Scan(&result)
@@ -47,14 +59,14 @@ func IsWordInDB(word string) bool {
 	return res.RowsAffected > 0
 }
 
-func GetRandomWordByLength(length int) (string, error) {
-	if DB == nil {
+func (db *DBManager) GetRandomWordByLength(length int) (string, error) {
+	if db.DB == nil {
 		log.Println("Database is not initialized.")
 		return "", fmt.Errorf("database is not initialized")
 	}
 
 	var result Word
-	err := DB.Raw("SELECT * FROM kr WHERE LENGTH(word) = ? ORDER BY RANDOM() LIMIT 1", length).Scan(&result).Error
+	err := db.DB.Raw("SELECT * FROM kr WHERE LENGTH(word) = ? ORDER BY RANDOM() LIMIT 1", length).Scan(&result).Error
 
 	if err != nil {
 		return "", err
@@ -66,16 +78,6 @@ func GetRandomWordByLength(length int) (string, error) {
 	normalized = strings.ReplaceAll(normalized, "^", "")
 
 	return normalized, nil
-}
-
-func InitDB() error {
-	db, err := gorm.Open(sqlite.Open("data/kr_korean.db"), &gorm.Config{})
-	if err != nil {
-		return fmt.Errorf("failed to connect database: %w", err)
-	}
-	DB = db
-	log.Println("Database connection successfully established.")
-	return nil
 }
 
 // 비공개 메서드

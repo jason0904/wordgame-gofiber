@@ -7,8 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var dbManager *DBManager
+
 func TestMain(m *testing.M) {
-	InitDB()
+	var err error
+	dbManager, err = NewDBManager()
+	if err != nil {
+		panic(err)
+	}
 	exitCode := m.Run()
 	os.Exit(exitCode)
 }
@@ -43,7 +49,7 @@ func TestIsWordInDB(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := IsWordInDB(tc.word)
+			got := dbManager.IsWordInDB(tc.word)
 			assert.Equal(t, tc.expected, got, "IsWordInDB(%q) 결과가 예상과 다릅니다.", tc.word)
 		})
 	}
@@ -68,7 +74,7 @@ func TestGetRandomWordByLength(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			word, err := GetRandomWordByLength(tc.length)
+			word, err := dbManager.GetRandomWordByLength(tc.length)
 			if tc.expectError {
 				assert.Error(t, err, "오류가 예상되었으나 발생하지 않았습니다.")
 			} else {
