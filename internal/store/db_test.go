@@ -4,17 +4,28 @@ import (
 	"os"
 	"testing"
 
+	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 )
 
 var dbManager *DBManager
 
 func TestMain(m *testing.M) {
+	if err := os.Chdir("../../"); err != nil {
+		panic("could not change to root dir")
+	}
+
+	if err := godotenv.Load(); err != nil {
+		// .env 파일이 없어도 패닉을 발생시키지 않고 진행할 수 있습니다.
+		// NewDBManager가 기본 경로를 사용하게 됩니다.
+	}
+
 	var err error
 	dbManager, err = NewDBManager()
 	if err != nil {
 		panic(err)
 	}
+
 	exitCode := m.Run()
 	os.Exit(exitCode)
 }
