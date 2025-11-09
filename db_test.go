@@ -34,6 +34,11 @@ func TestIsWordInDB(t *testing.T) {
 			word:     "",
 			expected: false,
 		},
+		{
+			name:     "합성어",
+			word:     "식기세척기",
+			expected: true,
+		},
 	}
 
 	for _, tc := range testCases {
