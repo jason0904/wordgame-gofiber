@@ -5,26 +5,29 @@ import (
 	"sync"
 
 	"wordgame/internal/random"
+	"wordgame/internal/store"
 )
 
 type RoomManager struct {
 	rooms map[int]*Game
+	random random.Manager
 
 	mutex sync.RWMutex
 }
 
-func NewRoomManager() *RoomManager {
+func NewRoomManager(random random.Manager) *RoomManager {
 	return &RoomManager{
 		rooms: make(map[int]*Game),
+		random: random,
 	}
 }
 
-func (rm *RoomManager) MakeRoom(name string) *Game {
+func (rm *RoomManager) MakeRoom(name string, db store.DBManager) *Game {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 
-	roomId := generateRoomID()
-	room := NewGame(name, roomId, rm)
+	roomId := rm.generateRoomID()
+	room := NewGame(name, roomId, rm, rm.random, db)
 	rm.rooms[roomId] = room
 	log.Printf("Room created: %d", roomId)
 	return room
@@ -63,6 +66,6 @@ func (rm *RoomManager) DeleteRoom(id int) {
 
 // 비공개 메서드
 
-func generateRoomID() int {
-	return random.MakeRandomNumber(1000, 9000)
+func (rm *RoomManager) generateRoomID() int {
+	return rm.random.MakeRandomNumber(1000, 9999)
 }
