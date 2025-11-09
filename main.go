@@ -6,6 +6,7 @@ import (
 
 	"wordgame/internal/game"
 	"wordgame/internal/store"
+	"wordgame/internal/random"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -18,10 +19,11 @@ func main() {
 	// 정적 파일 서빙
 	app.Static("/", "./assets/public")
 
-	roomManager := game.NewRoomManager()
-
-	if err := store.InitDB(); err != nil {
-		log.Fatalf("Database initialization failed: %v", err)
+	randomManager := random.NewManager()
+	roomManager := game.NewRoomManager(*randomManager)
+	dbManager, err := store.NewDBManager()
+	if err != nil {
+		log.Fatalf("Failed to initialize database manager: %v", err)
 	}
 
 	// 방 목록 조회 API
@@ -45,7 +47,7 @@ func main() {
 			req.RoomName = "새로운 방" // 이름이 없으면 기본값 사용
 		}
 
-		game := roomManager.MakeRoom(req.RoomName)
+		game := roomManager.MakeRoom(req.RoomName, *dbManager)
 		return c.JSON(fiber.Map{"id": game.RoomId, "roomName": game.RoomName})
 	})
 
