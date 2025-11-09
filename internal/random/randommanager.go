@@ -5,8 +5,16 @@ import (
 	"time"
 )
 
-var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
+type Manager struct {
+	rnd *rand.Rand
+}
 
-func MakeRandomNumber(min, max int) int {
-	return rnd.Intn(max-min) + min
+func NewManager() *Manager {
+	return &Manager{
+		rnd: rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
+}
+
+func (r *Manager) MakeRandomNumber(min, max int) int {
+	return r.rnd.Intn(max-min) + min
 }
