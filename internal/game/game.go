@@ -2,6 +2,7 @@ package game
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -26,8 +27,7 @@ const (
 
 	WAITINGFORPLAYERSMSG = "플레이어를 기다리는 중..."
 	AVAILABLEMSG         = "새 게임을 시작할 수 있습니다. 플레이어를 기다립니다."
-	STARTMSG             = "게임이 시작되었습니다!"
-	STARTMSG2            = "님부터 시작하세요."
+	STARTMSG             = "게임이 시작되었습니다! %s님부터 시작하세요."
 	ELIMINATEDMSG        = "님이 탈락했습니다. 이유 : "
 	WINNERMSG            = "님이 승리했습니다!"
 	EXITMSG              = "님이 게임에서 나갔습니다. 다음 차례 : "
@@ -36,8 +36,7 @@ const (
 
 	ALREADYSTARTEDMSG    = "이미 게임이 시작되었습니다."
 	NOHOSTPRIVILEGESMSG  = "게임을 시작할 권한이 없습니다. 호스트만 게임을 시작할 수 있습니다."
-	MINPLAYERTOSTARTMSG  = "게임을 시작하려면 최소 "
-	MINPLAYERTOSTARTMSG2 = "명의 플레이어가 필요합니다."
+	MINPLAYERTOSTARTMSG  = "게임을 시작하려면 최소 %d명의 플레이어가 필요합니다."
 
 	TYPEWORDMSG        = "단어를 입력하세요."
 	MINWORDLENGTHMSG   = "단어는 최소 2자 이상이어야 합니다."
@@ -45,28 +44,28 @@ const (
 	WORDNOTINDICTMSG   = "사전에 없는 단어입니다."
 	WORDMISMATCHMSG    = "끝말이 맞지 않습니다."
 
-	STARTJSONTYPE  = "start_game"
-	SUBMITJSONTYPE = "submit_word"
-	RESETJSONTYPE  = "reset_game"
-	WELCOMEJSONTYPE  = "welcome"
+	STARTJSONTYPE   = "start_game"
+	SUBMITJSONTYPE  = "submit_word"
+	RESETJSONTYPE   = "reset_game"
+	WELCOMEJSONTYPE = "welcome"
 
-	MARSHALERROR = "marshal error"
-	UNMARSHALERROR = "unmarshal error"
-	FAILSENDWELCOME = "failed to send welcome to %s: %v"
-	SUBMITPAYLOADERROR = "invalid payload for submit_word: "
-	UNKNOWNMESSAGETYPE = "unknown message type: "
-	ENDLOGMSG = "game reset after endGame in room %d"
-	RESETLOGMSG = "game reset in room %d"
-	STARTLOGMSG = "Game started in room %d"
-	BROADCASTLOGMSG = "broadcasting state in room %d: %s"
-	HOSTLOGMSG = "Player %s is now the host(ID : %s)."
-	HOSTCHANGELOGMSG = "Host user changed to %s"
-	ENTERPLAYERLOGMSG = "Player %s Enter the Game(ID : %s)"
-	EXITPLAYERLOGMSG  = "Player %s Exit the Game(ID : %s)"
-	DELETEROOMLOGMSG  = "Deleting empty room %d"
-	REMOVESPECTATORLOGMSG = "Spectator %s removed(ID : %s)."
+	MARSHALERROR            = "marshal error"
+	UNMARSHALERROR          = "unmarshal error"
+	FAILSENDWELCOME         = "failed to send welcome to %s: %v"
+	SUBMITPAYLOADERROR      = "invalid payload for submit_word: "
+	UNKNOWNMESSAGETYPE      = "unknown message type: "
+	ENDLOGMSG               = "game reset after endGame in room %d"
+	RESETLOGMSG             = "game reset in room %d"
+	STARTLOGMSG             = "Game started in room %d"
+	BROADCASTLOGMSG         = "broadcasting state in room %d: %s"
+	HOSTLOGMSG              = "Player %s is now the host(ID : %s)."
+	HOSTCHANGELOGMSG        = "Host user changed to %s"
+	ENTERPLAYERLOGMSG       = "Player %s Enter the Game(ID : %s)"
+	EXITPLAYERLOGMSG        = "Player %s Exit the Game(ID : %s)"
+	DELETEROOMLOGMSG        = "Deleting empty room %d"
+	REMOVESPECTATORLOGMSG   = "Spectator %s removed(ID : %s)."
 	STARTINGWORDERRORLOGMSG = "Error getting random start word."
-	IDMAXATTEMPTSLOGMSG = "Warning: generateUniqueID reached max attempts, returning fallback ID"
+	IDMAXATTEMPTSLOGMSG     = "Warning: generateUniqueID reached max attempts, returning fallback ID"
 )
 
 type Game struct {
@@ -297,7 +296,7 @@ func (g *Game) startGame(user *User) {
 	}
 
 	if len(g.players) < MinPlayersToStart {
-		g.message = MINPLAYERTOSTARTMSG + strconv.Itoa(MinPlayersToStart) + MINPLAYERTOSTARTMSG2
+		g.message = fmt.Sprintf(MINPLAYERTOSTARTMSG, MinPlayersToStart)
 		return
 	}
 
@@ -321,7 +320,7 @@ func (g *Game) startNewRound() {
 	g.gameover = false
 	g.currentUserID = g.players[randomPlayerIndex].ID
 	currentUserName := g.players[randomPlayerIndex].Name
-	g.message = STARTMSG + g.makeNameToDisplay(g.currentUserID, currentUserName) + STARTMSG2
+	g.message = fmt.Sprintf(STARTMSG, g.makeNameToDisplay(g.currentUserID, currentUserName))
 	log.Printf(STARTLOGMSG, g.RoomId)
 }
 
