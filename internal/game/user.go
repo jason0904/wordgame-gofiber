@@ -1,4 +1,4 @@
-package main
+package game
 
 import (
 	"log"
@@ -21,7 +21,7 @@ func NewUser(conn *websocket.Conn, ID string, Name string) *User {
 	}
 }
 
-func (u *User) readLoop() {
+func (u *User) ReadLoop() {
 	defer func() {
 		//정상 종료 로직 추가.
 		log.Printf("Read loop for client %s ended.", u.ID)
@@ -38,6 +38,6 @@ func (u *User) readLoop() {
 		}
 		log.Printf("Received message from %s: %s", u.Name, string(msg))
 		// 메시지 처리 로직 추가
-		u.game.handleMessage(u, msg)
+		u.game.HandleMessage(u, msg)
 	}
 }

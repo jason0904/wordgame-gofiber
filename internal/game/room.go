@@ -1,4 +1,4 @@
-package main
+package game
 
 import (
 	"log"
@@ -24,7 +24,7 @@ func NewRoom() *Room {
 	}
 }
 
-func (r *Room) run() {
+func (r *Room) Run() {
 	for {
 		select {
 		case user := <-r.register:
@@ -44,7 +44,7 @@ func (r *Room) run() {
 			for client := range r.clients {
 				err := client.conn.WriteMessage(websocket.TextMessage, message)
 				if err != nil {
-					log.Printf("Error broadcasting to %s: %v", client.Name, err)
+					log.Printf("Error broadcasting to %s: %v. Closing connection.", client.Name, err)
 					client.conn.Close()
 					delete(r.clients, client)
 				}

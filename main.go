@@ -2,22 +2,25 @@ package main
 
 import (
 	"log"
-
 	"strconv"
+
+	"wordgame/internal/game"
+	"wordgame/internal/store"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
+
 )
 
 func main() {
 	app := fiber.New()
 
 	// 정적 파일 서빙
-	app.Static("/", "./public")
+	app.Static("/", "./assets/public")
 
-	roomManager := NewRoomManager()
-	
-	if err := InitDB(); err != nil {
+	roomManager := game.NewRoomManager()
+
+	if err := store.InitDB(); err != nil {
 		log.Fatalf("Database initialization failed: %v", err)
 	}
 

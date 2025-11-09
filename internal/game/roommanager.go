@@ -1,8 +1,10 @@
-package main
+package game
 
 import (
 	"log"
 	"sync"
+
+	"wordgame/internal/random"
 )
 
 type RoomManager struct {
@@ -43,10 +45,10 @@ func (rm *RoomManager) GetRooms() []map[string]any {
 	list := make([]map[string]any, 0, len(rm.rooms))
 	for id, game := range rm.rooms {
 		list = append(list, map[string]any{
-			"id":           id,
-			"roomName":     game.RoomName,
-			"playerCount":  len(game.players),
-			"isStarted":    game.started,
+			"id":          id,
+			"roomName":    game.RoomName,
+			"playerCount": len(game.players),
+			"isStarted":   game.started,
 		})
 	}
 	return list
@@ -62,5 +64,5 @@ func (rm *RoomManager) DeleteRoom(id int) {
 // 비공개 메서드
 
 func generateRoomID() int {
-	return makeRandomNumber(1000, 9000)
+	return random.MakeRandomNumber(1000, 9000)
 }

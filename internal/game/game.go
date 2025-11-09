@@ -1,4 +1,4 @@
-package main
+package game
 
 import (
 	"encoding/json"
@@ -11,6 +11,15 @@ import (
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
+
+	"wordgame/internal/store"
+	"wordgame/internal/random"
+)
+
+const (
+	MinPlayersToStart  = 2
+	MinStartWordLength = 2
+	MaxStartWordLength = 6
 )
 
 type Game struct {
@@ -39,7 +48,7 @@ type GameMessage struct {
 func NewGame(roomname string, roomId int, manager *RoomManager) *Game {
 	//게임 생성시 룸도 같이 생성되게.
 	room := NewRoom()
-	go room.run()
+	go room.Run()
 
 	return &Game{
 		room:       room,
@@ -80,15 +89,15 @@ func (g *Game) AddClient(conn *websocket.Conn, name string) {
 	g.broadcastGameState()
 
 	// 클라이언트의 메시지 수신 루프 시작 (blocking)
-	user.readLoop()
+	user.ReadLoop()
 
 	// readLoop 종료 시 연결 정리
-	g.room.unregister <- user
+	g.room.unregister <- user	
 	g.removeUser(user)
 	g.broadcastGameState()
 }
 
-func (g *Game) handleMessage(user *User, msg []byte) {
+func (g *Game) HandleMessage(user *User, msg []byte) {
 	var gameMessage GameMessage
 
 	if err := json.Unmarshal(msg, &gameMessage); err != nil {
@@ -98,10 +107,8 @@ func (g *Game) handleMessage(user *User, msg []byte) {
 
 	switch gameMessage.Type {
 	case "start_game":
-		if !g.started && user.ID == g.hostUserId {
-			g.startGame()
-			g.broadcastGameState()
-		}
+		g.startGame(user)
+		g.broadcastGameState()
 	case "submit_word":
 		if g.started {
 			word, ok := gameMessage.Payload.(string)
@@ -122,6 +129,8 @@ func (g *Game) handleMessage(user *User, msg []byte) {
 
 }
 
+// 비공개 메서드
+
 func (g *Game) handlePlay(user *User, word string) {
 	g.mu.Lock()
 
@@ -138,14 +147,13 @@ func (g *Game) handlePlay(user *User, word string) {
 		return
 	}
 
-	if len(word) == 1 {
+	if utf8.RuneCountInString(word) < 2 {
 		g.message = "단어는 최소 2자 이상이어야 합니다."
 		g.mu.Unlock()
 		g.broadcastGameState()
 		return
 	}
 
-	// 이미 사용된 단어이면 탈락 처리(관전모드로 전환)
 	if g.usedWords[word] {
 		winner, msg := g.eliminatePlayerUnlocked(user, "이미 사용된 단어입니다.")
 		g.mu.Unlock()
@@ -218,11 +226,22 @@ func (g *Game) reset() {
 	log.Printf("Game reset in room %d", g.RoomId)
 }
 
-func (g *Game) startGame() {
+func (g *Game) startGame(user *User) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	if g.started || len(g.players) == 0 {
+	if g.started {
+		g.message = "이미 게임이 시작되었습니다."
+		return
+	}
+
+	if g.hostUserId != user.ID {
+		g.message = "게임을 시작할 권한이 없습니다. 호스트만 게임을 시작할 수 있습니다."
+		return
+	}
+
+	if len(g.players) < MinPlayersToStart {
+		g.message = "게임을 시작하려면 최소 " + strconv.Itoa(MinPlayersToStart) + "명의 플레이어가 필요합니다."
 		return
 	}
 
@@ -283,6 +302,7 @@ func (g *Game) eliminatePlayerUnlocked(user *User, reason string) (winner bool, 
 	return false, ""
 }
 
+
 func (g *Game) broadcastGameState() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -318,7 +338,6 @@ func (g *Game) broadcastGameState() {
 	g.room.broadcast <- bytes
 }
 
-// 비공개 메서드
 
 func (g *Game) addUser(user *User) {
 	g.mu.Lock()
@@ -350,7 +369,7 @@ func (g *Game) removeUser(user *User) {
 			if g.hostUserId == user.ID {
 				//유저 아무에게 호스트 권한 이전
 				if len(g.players) > 0 {
-					randomUser := g.players[makeRandomNumber(0, len(g.players))].ID
+					randomUser := g.players[random.MakeRandomNumber(0, len(g.players))].ID
 					g.hostUserId = randomUser
 					log.Printf("Host user changed to %s", randomUser)
 				} else {
@@ -409,13 +428,13 @@ func (g *Game) setNextPlayerTurn(currentUserID string) {
 }
 
 func wordDBCheck(word string) bool {
-	return IsWordInDB(word)
+	return store.IsWordInDB(word)
 }
 
 func (g *Game) generateUniqueID() string {
 	const maxAttempts = 10000
 	for i := 0; i < maxAttempts; i++ {
-		n := makeRandomNumber(1000, 10000)
+		n := random.MakeRandomNumber(1000, 10000)
 		id := strconv.Itoa(n)
 
 		g.mu.Lock()
@@ -445,12 +464,12 @@ func (g *Game) generateUniqueID() string {
 }
 
 func (g *Game) selectRandomPlayerIndex() int {
-	return makeRandomNumber(0, len(g.players))
+	return random.MakeRandomNumber(0, len(g.players))
 }
 
 func (g *Game) makeStartWord() string {
-	randomWordLength := makeRandomNumber(2, 7) // 2자에서 6자 사이 
-	word, err := GetRandomWordByLength(randomWordLength)
+	randomWordLength := random.MakeRandomNumber(MinStartWordLength, MaxStartWordLength) // 2자에서 6자 사이
+	word, err := store.GetRandomWordByLength(randomWordLength)
 	if err != nil {
 		log.Println("Error getting random start word:", err)
 		return "사과" // 기본 단어 반환

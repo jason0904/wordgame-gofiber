@@ -1,13 +1,12 @@
-package main
+package random
 
 import (
-
-	"time"
 	"math/rand"
+	"time"
 )
 
 var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 
-func makeRandomNumber(min, max int) int {
+func MakeRandomNumber(min, max int) int {
 	return rnd.Intn(max-min) + min
 }
