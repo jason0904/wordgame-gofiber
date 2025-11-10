@@ -37,6 +37,24 @@
             padding: 0;
         }
 
+        .button-row {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        .button-row button {
+            padding: 0.6rem 1.1rem;
+            font-size: 1rem;
+            border-radius: 6px;
+            border: 0;
+            cursor: pointer;
+            min-width: 140px;
+        }
+
         #start-game-btn {
             background-color: #28a745;
             color: white;
@@ -79,6 +97,7 @@
             <h3>참가자 목록</h3>
             <ul id="lobby-players"></ul>
             <br>
+            <button id="lobby-btn">로비로 돌아가기</button>
             <button id="start-game-btn">게임 시작</button>
         </div>
 
@@ -91,7 +110,6 @@
                 <button type="submit" id="submit-btn">입력</button>
             </form>
             <br>
-            <button id="reset-btn">로비로 돌아가기</button>
             <div id="player-list">
                 <h3>참가자</h3>
                 <ul id="players"></ul>
@@ -105,6 +123,7 @@
         const roomTitle = document.getElementById('room-title');
         const lobbyPlayers = document.getElementById('lobby-players');
         const startGameBtn = document.getElementById('start-game-btn');
+        const lobbyBtn = document.getElementById('lobby-btn');
         const playersEl = document.getElementById('players');
 
         let myId = '';
@@ -133,16 +152,15 @@
         startGameBtn.addEventListener('click', () => {
             ws.send(JSON.stringify({ type: 'start_game' }));
         });
+        lobbyBtn.addEventListener('click', () => {
+            window.location.href = '/index.html';
+        });
 
         document.getElementById('game-form').addEventListener('submit', (e) => {
             e.preventDefault();
             const input = document.getElementById('word-input');
             ws.send(JSON.stringify({ type: 'submit_word', payload: input.value }));
             input.value = '';
-        });
-
-        document.getElementById('reset-btn').addEventListener('click', () => {
-            ws.send(JSON.stringify({ type: 'reset_game' }));
         });
 
         function renderPlayerItem(playerStr) {
