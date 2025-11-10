@@ -23,8 +23,11 @@ func main() {
 		log.Fatalf("Failed to initialize database manager: %v", err)
 	}
 
-	h := handler.NewHandler(roomManager, dbManager)
-	h.RegisterRoutes(app)
+	apiHandler := handler.NewAPIHandler(roomManager, dbManager)
+	apiHandler.RegisterRoutes(app)
+
+	wsHandler := handler.NewWSHandler(roomManager)
+	wsHandler.RegisterRoutes(app)
 
 	log.Println("listening on :3000")
 	if err := app.Listen(":3000"); err != nil {
