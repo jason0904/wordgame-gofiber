@@ -63,11 +63,6 @@ func (g *Game) HandleMessage(user *User, msg []byte) {
 			}
 			g.handlePlay(user, word)
 		}
-	case RESETJSONTYPE:
-		g.mu.Lock()
-		g.reset()
-		g.mu.Unlock()
-		g.broadcastGameState() // reset 후에 상태 전파
 	default:
 		log.Println(UNKNOWNMESSAGETYPE, gameMessage.Type)
 	}
