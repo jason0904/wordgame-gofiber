@@ -4,16 +4,15 @@ import (
 	"wordgame/internal/random"
 	"wordgame/internal/store"
 
-	"testing"
 	"github.com/stretchr/testify/assert"
+	"testing"
 )
-
 
 func TestMakeRoom(t *testing.T) {
 	randomManager := random.NewManager()
 	rm := NewRoomManager(randomManager)
 	dbMock := &store.DBManager{}
-	
+
 	roomName := "Test Room"
 	room := rm.MakeRoom(roomName, dbMock)
 	assert.NotNil(t, room, "MakeRoom should return a non-nil room")
@@ -28,19 +27,21 @@ func TestGetRooms(t *testing.T) {
 	randomManager := random.NewManager()
 	rm := NewRoomManager(randomManager)
 	dbMock := &store.DBManager{}
-	
+
 	room1 := rm.MakeRoom("Room 1", dbMock)
 	room2 := rm.MakeRoom("Room 2", dbMock)
 	rooms := rm.GetRooms()
+
 	assert.Len(t, rooms, 2, "There should be 2 rooms in the manager")
 
 	for _, r := range rooms {
 		id := r["id"].(int)
-		if id == room1.RoomId {
+		switch id {
+		case room1.RoomId:
 			assert.Equal(t, "Room 1", r["roomName"], "Room name should match for Room 1")
-		} else if id == room2.RoomId {
+		case room2.RoomId:
 			assert.Equal(t, "Room 2", r["roomName"], "Room name should match for Room 2")
-		} else {
+		default:
 			t.Errorf("Unexpected room ID: %d", id)
 		}
 	}
@@ -53,7 +54,7 @@ func TestDeleteRoom(t *testing.T) {
 
 	room := rm.MakeRoom("Room to Delete", dbMock)
 	rm.DeleteRoom(room.RoomId)
-	
 	_, exists := rm.GetRoom(room.RoomId)
+	
 	assert.False(t, exists, "Room should not exist after deletion")
 }

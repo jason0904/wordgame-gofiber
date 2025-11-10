@@ -25,17 +25,15 @@ func TestAddUser(t *testing.T) {
 	user := &User{ID: "u1", Name: "Alice"}
 	g.addUser(user)
 
-	if len(g.players) != 1 {
-		t.Fatalf("expected 1 player, got %d", len(g.players))
-	}
+	assert.Contains(t, g.players, user, "Player list should contain the added user")
+	assert.Equal(t, 1, len(g.players), "Player list should have one user")
 }
 
 func TestRemoveUser(t *testing.T) {
 	g := SetupDefaultPlayers()
 
-	user1 := g.players[0] // Alice
-	user2 := g.players[1] // Bob
-
+	user1 := g.players[0]
+	user2 := g.players[1] 
 	g.removeUser(user1)
 
 	assert.NotContains(t, g.players, user1, "Player list should not contain the removed user")
