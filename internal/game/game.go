@@ -23,8 +23,8 @@ type Game struct {
 	started       bool
 	message       string
 	mu            sync.Mutex
-	store         store.DBManager
-	random        random.Manager
+	store         *store.DBManager
+	random        *random.Manager
 }
 
 type GameMessage struct {
@@ -32,7 +32,7 @@ type GameMessage struct {
 	Payload any    `json:"payload"`
 }
 
-func NewGame(roomname string, roomId int, manager *RoomManager, rnd random.Manager, store store.DBManager) *Game {
+func NewGame(roomname string, roomId int, manager *RoomManager, rnd *random.Manager, store *store.DBManager) *Game {
 	//게임 생성시 룸도 같이 생성되게.
 	room := NewRoom()
 	go room.Run()

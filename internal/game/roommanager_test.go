@@ -11,11 +11,11 @@ import (
 
 func TestMakeRoom(t *testing.T) {
 	randomManager := random.NewManager()
-	rm := NewRoomManager(*randomManager)
+	rm := NewRoomManager(randomManager)
 	dbMock := &store.DBManager{}
 	
 	roomName := "Test Room"
-	room := rm.MakeRoom(roomName, *dbMock)
+	room := rm.MakeRoom(roomName, dbMock)
 	assert.NotNil(t, room, "MakeRoom should return a non-nil room")
 	assert.Equal(t, roomName, room.RoomName, "Room name should match the provided name")
 
@@ -26,11 +26,11 @@ func TestMakeRoom(t *testing.T) {
 
 func TestGetRooms(t *testing.T) {
 	randomManager := random.NewManager()
-	rm := NewRoomManager(*randomManager)
+	rm := NewRoomManager(randomManager)
 	dbMock := &store.DBManager{}
 	
-	room1 := rm.MakeRoom("Room 1", *dbMock)
-	room2 := rm.MakeRoom("Room 2", *dbMock)
+	room1 := rm.MakeRoom("Room 1", dbMock)
+	room2 := rm.MakeRoom("Room 2", dbMock)
 	rooms := rm.GetRooms()
 	assert.Len(t, rooms, 2, "There should be 2 rooms in the manager")
 
@@ -48,10 +48,10 @@ func TestGetRooms(t *testing.T) {
 
 func TestDeleteRoom(t *testing.T) {
 	randomManager := random.NewManager()
-	rm := NewRoomManager(*randomManager)
+	rm := NewRoomManager(randomManager)
 	dbMock := &store.DBManager{}
-	
-	room := rm.MakeRoom("Room to Delete", *dbMock)
+
+	room := rm.MakeRoom("Room to Delete", dbMock)
 	rm.DeleteRoom(room.RoomId)
 	
 	_, exists := rm.GetRoom(room.RoomId)

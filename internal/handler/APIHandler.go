@@ -41,6 +41,6 @@ func (a *APIHandler) CreateRoom(c *fiber.Ctx) error {
 		req.RoomName = "새로운 방"
 	}
 
-	game := a.RoomManager.MakeRoom(req.RoomName, *a.DBManager)
+	game := a.RoomManager.MakeRoom(req.RoomName, a.DBManager)
 	return c.JSON(fiber.Map{"id": game.RoomId, "roomName": game.RoomName})
 }

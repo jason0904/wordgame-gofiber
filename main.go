@@ -17,7 +17,7 @@ func main() {
 	app.Static("/", "./assets/public")
 
 	randomManager := random.NewManager()
-	roomManager := game.NewRoomManager(*randomManager)
+	roomManager := game.NewRoomManager(randomManager)
 	dbManager, err := store.NewDBManager()
 	if err != nil {
 		log.Fatalf("Failed to initialize database manager: %v", err)

@@ -10,19 +10,19 @@ import (
 
 type RoomManager struct {
 	rooms map[int]*Game
-	random random.Manager
+	random *random.Manager
 
 	mutex sync.RWMutex
 }
 
-func NewRoomManager(random random.Manager) *RoomManager {
+func NewRoomManager(random *random.Manager) *RoomManager {
 	return &RoomManager{
 		rooms: make(map[int]*Game),
 		random: random,
 	}
 }
 
-func (rm *RoomManager) MakeRoom(name string, db store.DBManager) *Game {
+func (rm *RoomManager) MakeRoom(name string, db *store.DBManager) *Game {
 	rm.mutex.Lock()
 	defer rm.mutex.Unlock()
 

@@ -23,8 +23,8 @@ func SetupTestGame() *Game {
 		if err != nil {
 			panic(err)
 		}
-		rm := NewRoomManager(*random.NewManager())
-		testGame = NewGame("Test Room", 1, rm, *random.NewManager(), *dbManager)
+		rm := NewRoomManager(random.NewManager())
+		testGame = NewGame("Test Room", 1, rm, random.NewManager(), dbManager)
 	}
 
 	return testGame
