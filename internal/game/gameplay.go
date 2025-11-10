@@ -13,6 +13,7 @@ func (g *Game) handlePlay(user *User, word string) {
 	g.mu.Lock()
 
 	if g.gameover || g.currentUserID != user.ID {
+		g.message = NOTTOHANDLEPLAYMSG
 		g.mu.Unlock()
 		return
 	}
@@ -33,7 +34,7 @@ func (g *Game) handlePlay(user *User, word string) {
 	}
 
 	if g.usedWords[word] {
-		winner, msg := g.eliminatePlayerUnlocked(user, WORDALREADYUSEDMSG)
+		winner, msg := g.eliminatePlayer(user, WORDALREADYUSEDMSG)
 		g.mu.Unlock()
 		if winner {
 			g.endGame(msg)
@@ -47,7 +48,7 @@ func (g *Game) handlePlay(user *User, word string) {
 		lastRune, _ := utf8.DecodeLastRuneInString(g.lastWord)
 		firstRune, _ := utf8.DecodeRuneInString(word)
 		if lastRune != firstRune {
-			winner, msg := g.eliminatePlayerUnlocked(user, WORDMISMATCHMSG)
+			winner, msg := g.eliminatePlayer(user, WORDMISMATCHMSG)
 			g.mu.Unlock()
 			if winner {
 				g.endGame(msg)
@@ -56,7 +57,7 @@ func (g *Game) handlePlay(user *User, word string) {
 			}
 			return
 		} else if !g.wordDBCheck(word) {
-			winner, msg := g.eliminatePlayerUnlocked(user, WORDNOTINDICTMSG)
+			winner, msg := g.eliminatePlayer(user, WORDNOTINDICTMSG)
 			g.mu.Unlock()
 			if winner {
 				g.endGame(msg)
@@ -114,7 +115,7 @@ func (g *Game) startGame(user *User) {
 	defer g.mu.Unlock()
 
 	if g.started {
-		g.message = ALREADYSTARTEDMSG
+		g.message = GAMEALREADYSTARTEDMSG
 		return
 	}
 
@@ -152,7 +153,7 @@ func (g *Game) startNewRound() {
 	log.Printf(STARTLOGMSG, g.RoomId)
 }
 
-func (g *Game) eliminatePlayerUnlocked(user *User, reason string) (winner bool, winnerMsg string) {
+func (g *Game) eliminatePlayer(user *User, reason string) (winner bool, winnerMsg string) {
 	for i, p := range g.players {
 		if p.ID == user.ID {
 			g.players = append(g.players[:i], g.players[i+1:]...)
