@@ -12,67 +12,17 @@ import (
 func (g *Game) handlePlay(user *User, word string) {
 	g.mu.Lock()
 
-	if g.gameover || g.currentUserID != user.ID {
-		g.message = NOTTOHANDLEPLAYMSG
-		g.mu.Unlock()
-		return
-	}
+	handleGameAlreadyStarted(g)
+	handleUserIsNotHost(g, user.ID)
 
 	word = strings.TrimSpace(word)
-	if word == "" {
-		g.message = TYPEWORDMSG
-		g.mu.Unlock()
-		g.broadcastGameState()
-		return
-	}
+	handleWordIsBlank(g, word)
+	handleWordIsNotEnoughLength(g, word)
+	handleWordIsAlreadyUsed(g, user, word)
+	handleWordChainRuleDismatch(g, user, word)
+	handleWordIsNotInDB(g, user, word)
 
-	if utf8.RuneCountInString(word) < 2 {
-		g.message = MINWORDLENGTHMSG
-		g.mu.Unlock()
-		g.broadcastGameState()
-		return
-	}
-
-	if g.usedWords[word] {
-		winner, msg := g.eliminatePlayer(user, WORDALREADYUSEDMSG)
-		g.mu.Unlock()
-		if winner {
-			g.endGame(msg)
-		} else {
-			g.broadcastGameState()
-		}
-		return
-	}
-
-	if g.lastWord != "" {
-		lastRune, _ := utf8.DecodeLastRuneInString(g.lastWord)
-		firstRune, _ := utf8.DecodeRuneInString(word)
-		if lastRune != firstRune {
-			winner, msg := g.eliminatePlayer(user, WORDMISMATCHMSG)
-			g.mu.Unlock()
-			if winner {
-				g.endGame(msg)
-			} else {
-				g.broadcastGameState()
-			}
-			return
-		} else if !g.wordDBCheck(word) {
-			winner, msg := g.eliminatePlayer(user, WORDNOTINDICTMSG)
-			g.mu.Unlock()
-			if winner {
-				g.endGame(msg)
-			} else {
-				g.broadcastGameState()
-			}
-			return
-		}
-	}
-
-	g.lastWord = word
-	g.usedWords[word] = true
-	g.setNextPlayerTurn(user.ID)
-	g.mu.Unlock()
-	g.broadcastGameState()
+	handleNextTurn(g, user, word)
 }
 
 func (g *Game) endGame(message string) {
@@ -83,7 +33,7 @@ func (g *Game) endGame(message string) {
 	log.Printf(RESETLOGMSG, g.RoomId)
 	g.broadcastGameState()
 
-	// 5초 후 게임을 리셋하여 로비로 돌아감
+	//5초 후에 게임 리셋
 	go func() {
 		time.Sleep(5 * time.Second)
 		g.mu.Lock()
@@ -94,7 +44,6 @@ func (g *Game) endGame(message string) {
 }
 
 func (g *Game) reset() {
-
 	if g.gameover {
 		g.players = append(g.players, g.spectators...)
 		g.spectators = make([]*User, 0)
@@ -117,14 +66,10 @@ func (g *Game) startGame(user *User) {
 	if g.started {
 		g.message = GAMEALREADYSTARTEDMSG
 		return
-	}
-
-	if g.hostUserId != user.ID {
+	} else if g.hostUserId != user.ID {
 		g.message = NOHOSTPRIVILEGESMSG
 		return
-	}
-
-	if len(g.players) < MinPlayersToStart {
+	} else if len(g.players) < MinPlayersToStart {
 		g.message = fmt.Sprintf(MINPLAYERTOSTARTMSG, MinPlayersToStart)
 		return
 	}
@@ -133,9 +78,7 @@ func (g *Game) startGame(user *User) {
 }
 
 func (g *Game) startNewRound() {
-
 	if len(g.players) == 0 {
-		// 플레이어가 없으면 자동으로 로비로 리셋
 		g.reset()
 		return
 	}
@@ -148,46 +91,21 @@ func (g *Game) startNewRound() {
 	g.started = true
 	g.gameover = false
 	g.currentUserID = g.players[randomPlayerIndex].ID
-	currentUserName := g.players[randomPlayerIndex].Name
-	g.message = fmt.Sprintf(STARTMSG, g.makeNameToDisplay(g.currentUserID, currentUserName))
+	g.message = fmt.Sprintf(STARTMSG, g.makeNameToDisplay(g.currentUserID, g.players[randomPlayerIndex].Name))
 	log.Printf(STARTLOGMSG, g.RoomId)
 }
 
 func (g *Game) eliminatePlayer(user *User, reason string) (winner bool, winnerMsg string) {
 	for i, p := range g.players {
-		if p.ID == user.ID {
-			g.players = append(g.players[:i], g.players[i+1:]...)
-			g.spectators = append(g.spectators, user)
-			g.message = g.makeNameToDisplay(user.ID, user.Name) + ELIMINATEDMSG + reason
-
-			// 현재 차례가 탈락자였으면 다음 활성 플레이어로 이동
-			if g.currentUserID == user.ID {
-				if len(g.players) > 0 {
-					nextIdx := i % len(g.players)
-					g.currentUserID = g.players[nextIdx].ID
-				} else {
-					g.currentUserID = ""
-				}
-			}
-
-			// 승리 조건: 활성 플레이어가 한 명이면 우승 처리 (잠금은 호출자가 관리)
-			if len(g.players) == 1 {
-				winner := g.players[0]
-				msg := g.makeNameToDisplay(winner.ID, winner.Name) + WINNERMSG
-				g.gameover = true
-				g.message = msg
-				return true, msg
-			}
-
+		handleUserElimination(g, user, p, i, reason)
+		winner, msg := handleWinnnerCheck(g)
+		if winner {
+			return true, msg
+		} else {
 			g.startNewRound()
-			return false, ""
 		}
 	}
 	return false, ""
-}
-
-func (g *Game) wordDBCheck(word string) bool {
-	return g.store.IsWordInDB(word)
 }
 
 func (g *Game) makeStartWord() string {
@@ -198,4 +116,113 @@ func (g *Game) makeStartWord() string {
 		return NORMALSTARTWORD
 	}
 	return word
+}
+
+func (g *Game) wordDBCheck(word string) bool {
+	return g.store.IsWordInDB(word)
+}
+
+
+// 비공개 메서드
+
+func handleGameAlreadyStarted(g *Game) {
+	if !g.started {
+		g.message = NOTTOHANDLEPLAYMSG
+		g.mu.Unlock()
+		g.broadcastGameState()
+		return
+	}
+}
+
+func handleUserIsNotHost(g *Game, id string) {
+	if g.hostUserId != id {
+		g.message = NOHOSTPRIVILEGESMSG
+		g.mu.Unlock()
+		g.broadcastGameState()
+		return
+	}
+}
+
+func handleWordIsBlank(g *Game, word string) {
+	if word == "" {
+		g.message = TYPEWORDMSG
+		g.mu.Unlock()
+		g.broadcastGameState()
+		return
+	}
+}
+
+func handleWordIsNotEnoughLength(g *Game, word string) {
+	if utf8.RuneCountInString(word) < 2 {
+		g.message = MINWORDLENGTHMSG
+		g.mu.Unlock()
+		g.broadcastGameState()
+		return
+	}
+}
+
+func handleEndGameOrContinue(g *Game, winner bool, msg string) {
+	if winner {
+		g.endGame(msg)
+	} else {
+		g.broadcastGameState()
+	}
+}
+
+func handleWordIsAlreadyUsed(g *Game, user *User, word string) {
+	if g.usedWords[word] {
+		winner, msg := g.eliminatePlayer(user, WORDALREADYUSEDMSG)
+		g.mu.Unlock()
+		handleEndGameOrContinue(g, winner, msg)
+		return
+	}
+}
+
+func handleWordChainRuleDismatch(g *Game, user *User, word string) {
+	lastRune, _ := utf8.DecodeLastRuneInString(g.lastWord)
+	firstRune, _ := utf8.DecodeRuneInString(word)
+	if lastRune != firstRune {
+		winner, msg := g.eliminatePlayer(user, WORDMISMATCHMSG)
+		g.mu.Unlock()
+		handleEndGameOrContinue(g, winner, msg)
+		return
+	}
+}
+
+func handleWordIsNotInDB(g *Game, user *User, word string) {
+	if !g.wordDBCheck(word) {
+		winner, msg := g.eliminatePlayer(user, WORDNOTINDICTMSG)
+		g.mu.Unlock()
+		handleEndGameOrContinue(g, winner, msg)
+		return
+	}
+}
+
+func handleNextTurn(g *Game, user *User, word string) {
+	g.lastWord = word
+	g.usedWords[word] = true
+	g.setNextPlayerTurn(user.ID)
+	g.mu.Unlock()
+	g.broadcastGameState()
+}
+
+func handleUserElimination(g *Game, user *User, target *User, index int, reason string) {
+	if target.ID == user.ID {
+		g.players = append(g.players[:index], g.players[index+1:]...)
+		g.spectators = append(g.spectators, user)
+		g.message = g.makeNameToDisplay(user.ID, user.Name) + ELIMINATEDMSG + reason
+	}
+}
+
+func handleWinnnerCheck(g *Game) (bool, string) {
+	// 승리 조건: 활성 플레이어가 한 명이면 우승 처리 (잠금은 호출자가 관리)
+	if len(g.players) == 1 {
+		winner := g.players[0]
+		msg := g.makeNameToDisplay(winner.ID, winner.Name) + WINNERMSG
+		g.gameover = true
+		g.message = msg
+		return true, msg
+	}
+	
+	return false, ""
 }
