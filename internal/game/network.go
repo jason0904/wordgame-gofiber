@@ -8,6 +8,11 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+type WelcomeMessage struct {
+	Type   string `json:"type"`
+	YourId string `json:"yourId"`
+}
+
 // ...existing code...
 func (g *Game) AddClient(conn *websocket.Conn, name string) {
 	id := g.generateUniqueID()
@@ -16,30 +21,14 @@ func (g *Game) AddClient(conn *websocket.Conn, name string) {
 
 	g.room.register <- user
 	g.addUser(user)
-
-	// 새로 접속한 클라이언트에만 개인 welcome 메시지(자기 ID) 전송
-	welcome := map[string]string{
-		"type":   WELCOMEJSONTYPE,
-		"yourId": user.ID,
-	}
-	if wb, err := json.Marshal(welcome); err == nil {
-		if err := user.conn.WriteMessage(websocket.TextMessage, wb); err != nil {
-			log.Printf(FAILSENDWELCOME, user.ID, err)
-		}
+	welcome := g.makeWelcomeMessage(user)
+	
+	if welcomeJson, err := json.Marshal(welcome); err == nil {
+		g.sendMessageToUser(user, welcomeJson)
 	} else {
 		log.Println(MARSHALERROR, err)
 	}
-
-	// 현재 상태 전파
-	g.broadcastGameState()
-
-	// 클라이언트의 메시지 수신 루프 시작 (blocking)
-	user.ReadLoop()
-
-	// readLoop 종료 시 연결 정리
-	g.room.unregister <- user
-	g.removeUser(user)
-	g.broadcastGameState()
+	go g.handleAfterConnect(user)
 }
 
 func (g *Game) HandleMessage(user *User, msg []byte) {
@@ -55,35 +44,83 @@ func (g *Game) HandleMessage(user *User, msg []byte) {
 		g.startGame(user)
 		g.broadcastGameState()
 	case SUBMITJSONTYPE:
-		if g.started {
-			word, ok := gameMessage.Payload.(string)
-			if !ok {
-				log.Println(SUBMITPAYLOADERROR, gameMessage.Payload)
-				return
-			}
-			g.handlePlay(user, word)
-		}
+		g.handleSubmit(user, gameMessage)
 	default:
 		log.Println(UNKNOWNMESSAGETYPE, gameMessage.Type)
 	}
-
 }
 
 func (g *Game) broadcastGameState() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	players := g.makePlayerList()
+	spectators := g.makeSpectatorList()
+	stateToSend := g.makeSendForm(players, spectators)
+	bytes, err := json.Marshal(stateToSend)
+	if err != nil {
+		log.Println(MARSHALERROR, err)
+		return
+	}
+	log.Printf(BROADCASTLOGMSG, g.RoomId, string(bytes))
+	g.room.broadcast <- bytes
+}
+
+func (g *Game) handleSubmit(user *User, gameMessage GameMessage) {
+	if g.started {
+		return
+	}
+	word, ok := gameMessage.Payload.(string)
+	if !ok {
+		log.Println(SUBMITPAYLOADERROR, gameMessage.Payload)
+		return
+	}
+	g.handlePlay(user, word)
+}
+
+func (g *Game) makeWelcomeMessage(user *User) WelcomeMessage {
+	return WelcomeMessage{
+		Type:   "welcome",
+		YourId: user.ID,
+	}
+}
+
+func (g *Game) handleAfterConnect(user *User) {
+	g.broadcastGameState()
+	user.ReadLoop()
+	g.handleClientDisconnect(user)
+}
+
+func (g *Game) handleClientDisconnect(user *User) {
+	g.room.unregister <- user
+	g.removeUser(user)
+	g.broadcastGameState()
+}
+
+func (g *Game) sendMessageToUser(user *User, json []byte) {
+	if err := user.conn.WriteMessage(websocket.TextMessage, json); err != nil {
+		log.Printf(FAILSENDWELCOME, user.ID, err)
+	}
+}
+
+func (g *Game) makePlayerList() []string {
 	players := make([]string, len(g.players))
 	for i, player := range g.players {
 		players[i] = g.makeNameToDisplay(player.ID, player.Name)
 	}
+	return players
+}
 
+func (g *Game) makeSpectatorList() []string {
 	spectators := make([]string, len(g.spectators))
-	for i, s := range g.spectators {
-		spectators[i] = g.makeNameToDisplay(s.ID, s.Name)
+	for i, spectator := range g.spectators {
+		spectators[i] = g.makeNameToDisplay(spectator.ID, spectator.Name)
 	}
+	return spectators
+}
 
-	stateToSend := fiber.Map{
+func (g *Game) makeSendForm(players, spectators []string) fiber.Map {
+	return fiber.Map{
 		"lastWord":            g.lastWord,
 		"players":             players,
 		"spectators":          spectators,
@@ -93,13 +130,4 @@ func (g *Game) broadcastGameState() {
 		"isStarted":           g.started,
 		"message":             g.message,
 	}
-
-	bytes, err := json.Marshal(stateToSend)
-	if err != nil {
-		log.Println(MARSHALERROR, err)
-		return
-	}
-
-	log.Printf(BROADCASTLOGMSG, g.RoomId, string(bytes))
-	g.room.broadcast <- bytes
 }
