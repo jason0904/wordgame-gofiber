@@ -111,15 +111,27 @@ func (g *Game) startNewRound() {
 }
 
 func (g *Game) eliminatePlayer(user *User, reason string) (winner bool, winnerMsg string) {
+	eliminated := false
+
 	for i, p := range g.players {
-		handleUserElimination(g, user, p, i, reason)
-		winner, msg := handleWinnnerCheck(g)
-		if winner {
-			return true, msg
-		} else {
-			g.startNewRound()
+		if p.ID == user.ID {
+			g.players = append(g.players[:i], g.players[i+1:]...)
+			g.spectators = append(g.spectators, user)
+			g.message = g.makeNameToDisplay(user.ID, user.Name) + ELIMINATEDMSG + reason
+			eliminated = true
+			break
 		}
 	}
+
+	winner, msg := handleWinnnerCheck(g)
+	if winner {
+		return true, msg
+	}
+
+	if eliminated {
+		g.startNewRound()
+	}
+
 	return false, ""
 }
 
@@ -136,7 +148,6 @@ func (g *Game) makeStartWord() string {
 func (g *Game) wordDBCheck(word string) bool {
 	return g.store.IsWordInDB(word)
 }
-
 
 // 비공개 메서드
 
@@ -245,6 +256,6 @@ func handleWinnnerCheck(g *Game) (bool, string) {
 		g.message = msg
 		return true, msg
 	}
-	
+
 	return false, ""
 }
