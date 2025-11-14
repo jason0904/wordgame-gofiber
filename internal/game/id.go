@@ -9,27 +9,8 @@ import (
 func (g *Game) generateUniqueID() string {
 	const maxAttempts = MAXIDENTIFIER - MINIDENTIFIER + 1
 	for i := 0; i < maxAttempts; i++ {
-		n := g.random.MakeRandomNumber(MINIDENTIFIER, MAXIDENTIFIER+1)
-		id := strconv.Itoa(n)
-
-		g.mu.Lock()
-		exists := false
-		for _, p := range g.players {
-			if p.ID == id {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			for _, s := range g.spectators {
-				if s.ID == id {
-					exists = true
-					break
-				}
-			}
-		}
-		g.mu.Unlock()
-
+		id := g.makeRandomID()
+		exists := g.isIDExist(id)
 		if !exists {
 			return id
 		}
@@ -44,4 +25,44 @@ func (g *Game) selectRandomPlayerIndex() int {
 
 func (g *Game) makeNameToDisplay(userID, userName string) string {
 	return userName + IDSUFFIX + userID
+}
+
+func (g *Game) makeRandomID() string {
+	n := g.random.MakeRandomNumber(MINIDENTIFIER, MAXIDENTIFIER+1)
+	return strconv.Itoa(n)
+}
+
+func (g *Game) isIDExist(id string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.isIDInPlayers(id) {
+		return true
+	}
+	if g.isIDInSpectators(id) {
+		return true
+	}
+	return false
+}
+
+func (g *Game) isIDInPlayers(id string) bool {
+	for _, p := range g.players {
+		if g.isIDEqual(p.ID, id) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Game) isIDInSpectators(id string) bool {
+	for _, s := range g.spectators {
+		if g.isIDEqual(s.ID, id) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Game) isIDEqual(id1, id2 string) bool {
+	return id1 == id2
 }
