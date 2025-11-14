@@ -113,13 +113,7 @@ func (g *Game) eliminatePlayer(user *User, reason string) (winner bool, winnerMs
 	eliminated := false
 
 	for i, p := range g.players {
-		if p.ID == user.ID {
-			g.players = append(g.players[:i], g.players[i+1:]...)
-			g.spectators = append(g.spectators, user)
-			g.message = g.makeNameToDisplay(user.ID, user.Name) + ELIMINATEDMSG + reason
-			eliminated = true
-			break
-		}
+		handleUserElimination(g, p, user, i, reason)
 	}
 
 	winner, msg := handleWinnnerCheck(g)
