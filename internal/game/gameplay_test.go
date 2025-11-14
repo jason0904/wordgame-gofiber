@@ -149,7 +149,7 @@ func TestHandlePlayIfNotCurrentUserEntered(t *testing.T) {
 	nonCurrentPlayer := g.players[1]
 	g.handlePlay(nonCurrentPlayer, "사과")
 
-	assert.Equal(t, g.message, NOTTOHANDLEPLAYMSG, "Message should indicate not current user's turn")
+	assert.Equal(t, g.message, NOTCURRENTPLAYERSMSG, "Message should indicate not current user's turn")
 }
 
 func TestHandlePlayIfWordNotEntered(t *testing.T) {
