@@ -8,7 +8,6 @@ import (
 	"unicode/utf8"
 )
 
-// ...existing code...
 func (g *Game) handlePlay(user *User, word string) {
 	g.mu.Lock()
 

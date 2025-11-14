@@ -1,6 +1,5 @@
 package game
 
-// ...existing code...
 const (
     MinPlayersToStart  = 2
     MinStartWordLength = 2

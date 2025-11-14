@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-
 func TestGenerateUniqueID(t *testing.T) {
 
 	g := SetupTestGame()

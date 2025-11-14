@@ -5,7 +5,6 @@ import (
 	"strconv"
 )
 
-// ...existing code...
 func (g *Game) generateUniqueID() string {
 	const maxAttempts = MAXIDENTIFIER - MINIDENTIFIER + 1
 	for i := 0; i < maxAttempts; i++ {

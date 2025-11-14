@@ -13,7 +13,6 @@ type WelcomeMessage struct {
 	YourId string `json:"yourId"`
 }
 
-// ...existing code...
 func (g *Game) AddClient(conn *websocket.Conn, name string) {
 	id := g.generateUniqueID()
 	user := NewUser(conn, id, name)
@@ -22,7 +21,7 @@ func (g *Game) AddClient(conn *websocket.Conn, name string) {
 	g.room.register <- user
 	g.addUser(user)
 	welcome := g.makeWelcomeMessage(user)
-	
+
 	if welcomeJson, err := json.Marshal(welcome); err == nil {
 		g.sendMessageToUser(user, welcomeJson)
 	} else {
