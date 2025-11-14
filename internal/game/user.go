@@ -28,16 +28,28 @@ func (u *User) ReadLoop() {
 	}()
 
 	for {
-		_, msg, err := u.conn.ReadMessage()
+		msg, err := u.ReadMessage()
 		if err != nil {
-			//정상적으로 종료되었는지 체크
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("Read error for client %s: %v", u.Name, err)
-			}
+			log.Printf("Error reading message for client %s: %v", u.ID, err)
 			break
 		}
-		log.Printf("Received message from %s: %s", u.Name, string(msg))
-		// 메시지 처리 로직 추가
 		u.game.HandleMessage(u, msg)
+	}
+}
+
+func (u *User) ReadMessage() ([]byte, error) {
+	_, msg, err := u.conn.ReadMessage()
+	if err != nil {
+		u.checkNormalClosure(err)
+		return nil, err
+	}
+	log.Printf("Received message from %s: %s", u.Name, string(msg))
+	// 메시지 처리 로직 추가
+	return msg, nil
+}
+
+func (u *User) checkNormalClosure(err error) {
+	if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+		log.Printf("Read error for client %s: %v", u.Name, err)
 	}
 }
