@@ -11,32 +11,32 @@ import (
 func (g *Game) handlePlay(user *User, word string) {
 	g.mu.Lock()
 
-	if handleGameAlreadyStarted(g) {
+	if g.handleGameAlreadyStarted() {
 		return
 	}
 
-	if handleUserIsNotHost(g, user.ID) {
+	if g.handleUserIsNotCurrentTurn(user.ID) {
 		return
 	}
 
 	word = strings.TrimSpace(word)
-	if handleWordIsBlank(g, word) {
+	if g.handleWordIsBlank(word) {
 		return
 	}
-	if handleWordIsNotEnoughLength(g, word) {
+	if g.handleWordIsNotEnoughLength(word) {
 		return
 	}
-	if handleWordIsAlreadyUsed(g, user, word) {
+	if g.handleWordIsAlreadyUsed(user, word) {
 		return
 	}
-	if handleWordChainRuleDismatch(g, user, word) {
+	if g.handleWordChainRuleDismatch(user, word) {
 		return
 	}
-	if handleWordIsNotInDB(g, user, word) {
+	if g.handleWordIsNotInDB(user, word) {
 		return
 	}
 
-	handleNextTurn(g, user, word)
+	g.handleNextTurn(user, word)
 }
 
 func (g *Game) endGame(message string) {
@@ -113,10 +113,10 @@ func (g *Game) eliminatePlayer(user *User, reason string) (winner bool, winnerMs
 	eliminated := false
 
 	for i, p := range g.players {
-		handleUserElimination(g, p, user, i, reason)
+		g.handleUserElimination(p, user, i, reason)
 	}
 
-	winner, msg := handleWinnnerCheck(g)
+	winner, msg := g.handleWinnnerCheck()
 	if winner {
 		return true, msg
 	}
@@ -142,7 +142,7 @@ func (g *Game) wordDBCheck(word string) bool {
 	return g.store.IsWordInDB(word)
 }
 
-func handleGameAlreadyStarted(g *Game) bool {
+func (g *Game) handleGameAlreadyStarted() bool {
 	if !g.started {
 		g.message = NOTTOHANDLEPLAYMSG
 		g.mu.Unlock()
@@ -152,8 +152,8 @@ func handleGameAlreadyStarted(g *Game) bool {
 	return false
 }
 
-func handleUserIsNotHost(g *Game, id string) bool {
-	if g.hostUserId != id {
+func (g *Game) handleUserIsNotCurrentTurn(id string) bool {
+	if g.currentUserID != id {
 		g.message = NOTCURRENTPLAYERSMSG
 		g.mu.Unlock()
 		g.broadcastGameState()
@@ -162,7 +162,7 @@ func handleUserIsNotHost(g *Game, id string) bool {
 	return false
 }
 
-func handleWordIsBlank(g *Game, word string) bool {
+func (g *Game) handleWordIsBlank(word string) bool {
 	if word == "" {
 		g.message = TYPEWORDMSG
 		g.mu.Unlock()
@@ -172,7 +172,7 @@ func handleWordIsBlank(g *Game, word string) bool {
 	return false
 }
 
-func handleWordIsNotEnoughLength(g *Game, word string) bool {
+func (g *Game) handleWordIsNotEnoughLength(word string) bool {
 	if utf8.RuneCountInString(word) < 2 {
 		g.message = MINWORDLENGTHMSG
 		g.mu.Unlock()
@@ -182,7 +182,7 @@ func handleWordIsNotEnoughLength(g *Game, word string) bool {
 	return false
 }
 
-func handleEndGameOrContinue(g *Game, winner bool, msg string) {
+func (g *Game) handleEndGameOrContinue(winner bool, msg string) {
 	if winner {
 		g.endGame(msg)
 	} else {
@@ -190,39 +190,39 @@ func handleEndGameOrContinue(g *Game, winner bool, msg string) {
 	}
 }
 
-func handleWordIsAlreadyUsed(g *Game, user *User, word string) bool {
+func (g *Game) handleWordIsAlreadyUsed(user *User, word string) bool {
 	if g.usedWords[word] {
 		winner, msg := g.eliminatePlayer(user, WORDALREADYUSEDMSG)
 		g.mu.Unlock()
-		handleEndGameOrContinue(g, winner, msg)
+		g.handleEndGameOrContinue(winner, msg)
 		return true
 	}
 	return false
 }
 
-func handleWordChainRuleDismatch(g *Game, user *User, word string) bool {
+func (g *Game) handleWordChainRuleDismatch(user *User, word string) bool {
 	lastRune, _ := utf8.DecodeLastRuneInString(g.lastWord)
 	firstRune, _ := utf8.DecodeRuneInString(word)
 	if lastRune != firstRune {
 		winner, msg := g.eliminatePlayer(user, WORDMISMATCHMSG)
 		g.mu.Unlock()
-		handleEndGameOrContinue(g, winner, msg)
+		g.handleEndGameOrContinue(winner, msg)
 		return true
 	}
 	return false
 }
 
-func handleWordIsNotInDB(g *Game, user *User, word string) bool {
+func (g *Game) handleWordIsNotInDB(user *User, word string) bool {
 	if !g.wordDBCheck(word) {
 		winner, msg := g.eliminatePlayer(user, WORDNOTINDICTMSG)
 		g.mu.Unlock()
-		handleEndGameOrContinue(g, winner, msg)
+		g.handleEndGameOrContinue(winner, msg)
 		return true
 	}
 	return false
 }
 
-func handleNextTurn(g *Game, user *User, word string) {
+func (g *Game) handleNextTurn(user *User, word string) {
 	g.lastWord = word
 	g.usedWords[word] = true
 	g.setNextPlayerTurn(user.ID)
@@ -230,7 +230,7 @@ func handleNextTurn(g *Game, user *User, word string) {
 	g.broadcastGameState()
 }
 
-func handleUserElimination(g *Game, user *User, target *User, index int, reason string) {
+func (g *Game) handleUserElimination(user *User, target *User, index int, reason string) {
 	if target.ID == user.ID {
 		g.players = append(g.players[:index], g.players[index+1:]...)
 		g.spectators = append(g.spectators, user)
@@ -238,7 +238,7 @@ func handleUserElimination(g *Game, user *User, target *User, index int, reason 
 	}
 }
 
-func handleWinnnerCheck(g *Game) (bool, string) {
+func (g *Game) handleWinnnerCheck() (bool, string) {
 	// 승리 조건: 활성 플레이어가 한 명이면 우승 처리 (잠금은 호출자가 관리)
 	if len(g.players) == 1 {
 		winner := g.players[0]
