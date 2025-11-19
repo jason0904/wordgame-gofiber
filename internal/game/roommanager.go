@@ -64,8 +64,6 @@ func (rm *RoomManager) DeleteRoom(id int) {
 	delete(rm.rooms, id)
 }
 
-// 비공개 메서드
-
 func (rm *RoomManager) generateRoomID() int {
 	return rm.random.MakeRandomNumber(1000, 9999)
 }

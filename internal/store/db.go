@@ -80,8 +80,6 @@ func (db *DBManager) GetRandomWordByLength(length int) (string, error) {
 	return normalized, nil
 }
 
-// 비공개 메서드
-
 func normalizeWord(s string) string {
 	s = strings.TrimSpace(s)
 	replacer := strings.NewReplacer(" ", "", "-", "", "^", "")

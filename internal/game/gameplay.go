@@ -142,8 +142,6 @@ func (g *Game) wordDBCheck(word string) bool {
 	return g.store.IsWordInDB(word)
 }
 
-// 비공개 메서드
-
 func handleGameAlreadyStarted(g *Game) bool {
 	if !g.started {
 		g.message = NOTTOHANDLEPLAYMSG
