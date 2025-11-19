@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>새로운 방 만들기</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f2f5; margin: 0; }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+        input { width: 80%; padding: 10px; margin-bottom: 12px; font-size: 1rem; }
+        button { padding: 10px 20px; font-size: 1rem; cursor: pointer; border-radius: 4px; border: none; background-color: #28a745; color: white; }
+        .small { width: 80%; font-size: 0.9rem; padding: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>방 만들기</h1>
+        <form id="create-room-form">
+            <input type="text" id="room-name-input" placeholder="방 이름을 입력하세요" required autofocus>
+            <br>
+            <input type="text" id="user-name-input" placeholder="게임에서 사용할 이름을 입력하세요 (예: 익명)" class="small" required>
+            <br>
+            <button type="submit">방 만들기</button>
+        </form>
+    </div>
+
+<script>
+    document.getElementById('create-room-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const roomName = document.getElementById('room-name-input').value.trim();
+        const userName = document.getElementById('user-name-input').value.trim() || '익명';
+
+        if (!roomName) {
+            alert('방 이름을 입력해주세요.');
+            return;
+        }
+        if (!userName) {
+            alert('사용자 이름을 입력해주세요.');
+            return;
+        }
+
+        try {
+            // 서버에 room 생성 + creator 정보(이름) 전송
+            const response = await fetch('/api/rooms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomName: roomName, creatorName: userName })
+            });
+
+            if (!response.ok) {
+                throw new Error('방 생성에 실패했습니다.');
+            }
+
+            const newRoom = await response.json();
+            window.location.href = `/room.html?id=${newRoom.id}&roomName=${encodeURIComponent(newRoom.roomName)}&name=${encodeURIComponent(userName)}`;
+
+        } catch (error) {
+            console.error('Error creating room:', error);
+            alert('방을 생성하는 중 오류가 발생했습니다.');
+        }
+    });
+</script>
+</body>
+</html>
