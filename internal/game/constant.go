@@ -6,6 +6,8 @@ const (
     MaxStartWordLength = 6
     MAXIDENTIFIER      = 9999
     MINIDENTIFIER      = 1000
+    MINROOMIDIDENTIFIER = 1000
+    MAXROOMIDIDENTIFIER = 9999
     NORMALSTARTWORD    = "사과"
     IDFALLBACK         = "0000"
 

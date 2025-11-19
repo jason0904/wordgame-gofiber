@@ -65,5 +65,5 @@ func (rm *RoomManager) DeleteRoom(id int) {
 }
 
 func (rm *RoomManager) generateRoomID() int {
-	return rm.random.MakeRandomNumber(1000, 9999)
+	return rm.random.MakeRandomNumber(MINROOMIDIDENTIFIER, MAXROOMIDIDENTIFIER)
 }
