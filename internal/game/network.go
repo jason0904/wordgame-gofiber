@@ -27,7 +27,8 @@ func (g *Game) AddClient(conn *websocket.Conn, name string) {
 	} else {
 		log.Println(MARSHALERROR, err)
 	}
-	go g.handleAfterConnect(user)
+
+	g.handleAfterConnect(user)
 }
 
 func (g *Game) HandleMessage(user *User, msg []byte) {
@@ -66,7 +67,7 @@ func (g *Game) broadcastGameState() {
 }
 
 func (g *Game) handleSubmit(user *User, gameMessage GameMessage) {
-	if g.started {
+	if !g.started {
 		return
 	}
 	word, ok := gameMessage.Payload.(string)
@@ -91,13 +92,14 @@ func (g *Game) handleAfterConnect(user *User) {
 }
 
 func (g *Game) handleClientDisconnect(user *User) {
+	user.Close()
 	g.room.unregister <- user
 	g.removeUser(user)
 	g.broadcastGameState()
 }
 
 func (g *Game) sendMessageToUser(user *User, json []byte) {
-	if err := user.conn.WriteMessage(websocket.TextMessage, json); err != nil {
+	if err := user.WriteMessage(websocket.TextMessage, json); err != nil {
 		log.Printf(FAILSENDWELCOME, user.ID, err)
 	}
 }

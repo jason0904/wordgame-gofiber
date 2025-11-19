@@ -59,13 +59,17 @@ func (r *Room) handleUnregister(user *User) {
 
 func (r *Room) broadcastMessage(message []byte) {
 	r.mu.RLock()
+	clients := make([]*User, 0, len(r.clients))
 	for client := range r.clients {
-		err := client.conn.WriteMessage(websocket.TextMessage, message)
-		if err != nil {
-			log.Printf("Error broadcasting to %s: %v. Closing connection.", client.Name, err)
-			client.conn.Close()
-			r.handleUnregister(client)
-		}
+		clients = append(clients, client)
 	}
 	r.mu.RUnlock()
+
+	for _, client := range clients {
+		if err := client.WriteMessage(websocket.TextMessage, message); err != nil {
+			log.Printf("Error broadcasting to %s: %v. Closing connection.", client.Name, err)
+			client.Close()
+			r.unregister <- client
+		}
+	}
 }
